@@ -3,12 +3,12 @@
  */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
-import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { tenantId } from "./tenant-context";
-import { privateDataDirectory } from "./tenant-files";
+import { tenantId, currentTenant } from "./tenant-context";
+import { AuthError } from "./saas-security";
+import { ChatSessionLease, readChatSession, revokeChatSession } from "./chatgpt-session";
 
 import { tokenUsage, type TokenUsage } from "./token-usage";
 import { normalizeUsage } from "./account-usage";
@@ -50,10 +50,13 @@ type ActiveTurn = {
   timer: ReturnType<typeof setTimeout>;
 };
 
+type NativeLaunch = (options: { env: NodeJS.ProcessEnv; cwd: string; detached: boolean }) => ChildProcessWithoutNullStreams;
+const operations = new AsyncLocalStorage<ChatGPTBridge>();
+
 export class ChatGPTBridge {
   private readonly owner = tenantId();
-  private launcher?: () => ChildProcessWithoutNullStreams;
-  constructor(launcher?: () => ChildProcessWithoutNullStreams) {
+  private launcher?: NativeLaunch;
+  constructor(launcher?: NativeLaunch) {
     this.launcher = launcher;
   }
   private child: ChildProcessWithoutNullStreams | null = null;
@@ -71,16 +74,120 @@ export class ChatGPTBridge {
   private login: DeviceLogin | null = null;
   private loginError: string | null = null;
   private workspace = "";
+  private lease: ChatSessionLease | null = null;
+  private active = false;
+  private heartbeat?: ReturnType<typeof setInterval>;
+  private syncing: Promise<void> | null = null;
+  private closing: Promise<void> | null = null;
+  private loginCompletion: Promise<void> | null = null;
+
+  private assertOwner() {
+    if (currentTenant().user.id !== this.owner) throw new AuthError("Esta conexão ChatGPT pertence a outra conta.", 403);
+  }
+  private async use<T>(action: () => Promise<T>): Promise<T> {
+    this.assertOwner();
+    if (operations.getStore() === this) return action();
+    if (this.closing) await this.closing;
+    if (this.active) throw new AuthError("Sua conexão ChatGPT está em uso. Aguarde e tente novamente.", 409);
+    this.active = true;
+    return operations.run(this, async () => {
+      try { await this.start(); await this.sync(); return await action(); }
+      finally {
+        try { await this.loginCompletion; }
+        finally { this.active = false; if (!this.login) await this.shutdown(); }
+      }
+    });
+  }
+  private sync() {
+    if (!this.lease) return Promise.resolve();
+    return this.syncing ??= this.lease.sync().finally(() => { this.syncing = null; });
+  }
+  private async tick() {
+    if (!this.lease || this.closing) return;
+    try {
+      if (this.login && (this.lease.state.loginUntil || 0) <= Date.now()) {
+        await this.nativeCancelLogin();
+        this.loginError = "O código expirou. Gere um novo código.";
+        if (!this.active) await this.shutdown();
+      } else await this.sync();
+    } catch { await this.shutdown(false).catch(() => {}); }
+  }
+  private shutdown(persist = true): Promise<void> {
+    if (this.closing) return this.closing;
+    this.closing = (async () => {
+      clearInterval(this.heartbeat); this.heartbeat = undefined;
+      const child = this.child;
+      this.child = null;
+      this.failed(new Error("Conexão ChatGPT encerrada."));
+      if (child?.pid && child.exitCode === null && child.signalCode === null) {
+        await new Promise<void>(resolve => {
+          // The npm launcher has a native child. Kill its entire private group,
+          // including the forced-stop fallback, before deleting the auth cache.
+          const terminate = (signal: NodeJS.Signals) => {
+            try { if (process.platform !== "win32") process.kill(-child.pid!, signal); else child.kill(signal); }
+            catch { child.kill(signal); }
+          };
+          const timer = setTimeout(() => terminate("SIGKILL"), 2000); timer.unref();
+          child.once("exit", () => { clearTimeout(timer); resolve(); });
+          terminate("SIGTERM");
+        });
+      }
+      const lease = this.lease; this.lease = null;
+      try { await this.syncing; if (persist && lease) await lease.sync(true); }
+      finally { if (lease) await lease.dispose(); }
+    })().finally(() => { this.closing = null; });
+    return this.closing;
+  }
+  async account() {
+    this.assertOwner();
+    if (operations.getStore() !== this) {
+      const { state, busy } = await readChatSession();
+      return { account: state.auth ? state.account : null, login: busy ? state.login : null, error: this.loginError };
+    }
+    return this.use(() => this.nativeAccount());
+  }
+  async models() {
+    this.assertOwner();
+    if (operations.getStore() !== this) {
+      const { state, busy } = await readChatSession();
+      if (busy || (state.modelsAt || 0) > Date.now() - 15 * 60_000) return state.models;
+    }
+    return this.use(() => this.nativeModels());
+  }
+  async usage() { return this.use(() => this.nativeUsage()); }
+  async beginLogin() {
+    this.assertOwner();
+    const { state, busy } = await readChatSession();
+    if (busy && state.login) return state.login;
+    return this.use(() => this.nativeBeginLogin());
+  }
+  async cancelLogin() {
+    this.assertOwner();
+    // Revoking the lease also cancels a login hosted by another web process.
+    await revokeChatSession(false);
+    this.login = null;
+    await this.shutdown(false);
+  }
+  async logout() { this.assertOwner(); await revokeChatSession(); this.login = null; await this.shutdown(false); this.loginError = null; }
+  async run(options: Parameters<ChatGPTBridge["nativeRun"]>[0]) { return this.use(() => this.nativeRun(options)); }
 
   private async start() {
     if (tenantId() !== this.owner) throw new Error("Esta conexão ChatGPT pertence a outra conta.");
     if (this.ready) return this.ready;
     this.ready = (async () => {
-      const data = privateDataDirectory();
-      const codexHome = join(data, "chatgpt");
-      this.workspace = join(data, "agent-workspace");
-      mkdirSync(codexHome, { recursive: true, mode: 0o700 });
-      mkdirSync(this.workspace, { recursive: true, mode: 0o700 });
+      // Metadata requests can briefly hold the lease just as a worker starts.
+      // Retry only acquisition, before any native/provider action is dispatched.
+      for (let attempt = 0; ; attempt++) {
+        try { this.lease = await ChatSessionLease.acquire(); break; }
+        catch (error) {
+          if (!(error instanceof AuthError) || error.status !== 409 || attempt >= 19) throw error;
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+      const codexHome = this.lease.directory;
+      this.workspace = this.lease.workspace;
+      this.heartbeat = setInterval(() => { void this.tick(); }, 5000);
+      this.heartbeat.unref();
       // Allowlist environment: never inherit app credentials, user's Codex auth or other providers.
       const env: NodeJS.ProcessEnv = {
         PATH: process.env.PATH,
@@ -93,7 +200,7 @@ export class ChatGPTBridge {
       const require = createRequire(join(process.cwd(), "package.json"));
       const cli = require.resolve("@openai/codex/bin/codex.js");
       const child = this.launcher
-        ? this.launcher()
+        ? this.launcher({ env, cwd: this.workspace, detached: process.platform !== "win32" })
         : spawn(
             process.execPath,
             [
@@ -117,7 +224,7 @@ export class ChatGPTBridge {
               "-c",
               'web_search="disabled"',
             ],
-            { cwd: this.workspace, env, stdio: "pipe" },
+            { cwd: this.workspace, env, stdio: "pipe", detached: process.platform !== "win32" },
           );
       this.child = child;
       const lines = createInterface({ input: child.stdout });
@@ -140,10 +247,10 @@ export class ChatGPTBridge {
           );
       });
       child.once("exit", () => {
-        if (this.child === child)
-          this.failed(
-            new Error("A conexão ChatGPT foi interrompida. Tente novamente."),
-          );
+        if (this.child === child) {
+          this.failed(new Error("A conexão ChatGPT foi interrompida. Tente novamente."));
+          if (!this.active) void this.shutdown(false).catch(() => {});
+        }
       });
       await this.rpc("initialize", {
         clientInfo: {
@@ -155,12 +262,7 @@ export class ChatGPTBridge {
       });
       this.send({ method: "initialized" });
     })();
-    try {
-      await this.ready;
-    } catch (e) {
-      this.close();
-      throw e;
-    }
+    await this.ready;
   }
   private send(value: unknown) {
     if (!this.child?.stdin.writable)
@@ -256,10 +358,16 @@ export class ChatGPTBridge {
       return;
     }
     if (m.method === "account/login/completed") {
-      this.login = null;
-      this.loginError = p.success
-        ? null
-        : String(p.error || "Não foi possível entrar. Gere um novo código.");
+      this.loginCompletion = (async () => {
+        if (p.success) { await this.nativeAccount(); await this.nativeModels(); }
+        this.login = null;
+        this.loginError = p.success ? null : "Não foi possível entrar. Gere um novo código.";
+        if (this.lease) { this.lease.state.login = null; delete this.lease.state.loginUntil; }
+        await this.sync();
+      })();
+      try { await this.loginCompletion; }
+      catch { this.login = null; this.loginError = "Não foi possível guardar a conexão ChatGPT. Conecte novamente."; }
+      finally { this.loginCompletion = null; if (!this.active) await this.shutdown(); }
     }
     if (m.method === "thread/tokenUsage/updated" && turn) {
       const usage = tokenUsage((p.tokenUsage as Json)?.total, "chatgpt");
@@ -293,27 +401,26 @@ export class ChatGPTBridge {
         );
     }
   }
-  async account(): Promise<{
+  private async nativeAccount(): Promise<{
     account: ChatAccount;
     login: DeviceLogin | null;
     error: string | null;
   }> {
-    await this.start();
     const r = await this.rpc<{ account: ChatAccount }>("account/read", {
       refreshToken: false,
     });
+    if (this.lease) this.lease.state.account = r.account?.type === "chatgpt" ? r.account : null;
     return {
       account: r.account?.type === "chatgpt" ? r.account : null,
       login: this.login,
       error: this.loginError,
     };
   }
-  async usage() {
+  private async nativeUsage() {
     if (!(await this.account()).account) throw new Error("Conecte sua conta ChatGPT para consultar os limites.");
     return normalizeUsage(await this.rpc("account/rateLimits/read"));
   }
-  async beginLogin(): Promise<DeviceLogin> {
-    await this.start();
+  private async nativeBeginLogin(): Promise<DeviceLogin> {
     if (this.turns.size)
       throw new Error("Aguarde os agentes terminarem antes de trocar a conta.");
     if (this.login) return this.login;
@@ -327,35 +434,30 @@ export class ChatGPTBridge {
         "O ChatGPT devolveu um endereço de autenticação inesperado.",
       );
     this.login = r;
+    if (this.lease) { this.lease.state.login = r; this.lease.state.loginUntil = Date.now() + 10 * 60_000; }
+    await this.sync();
     return r;
   }
-  async cancelLogin() {
-    await this.start();
+  private async nativeCancelLogin() {
     if (this.login)
       await this.rpc("account/login/cancel", { loginId: this.login.loginId });
     this.login = null;
+    if (this.lease) { this.lease.state.login = null; delete this.lease.state.loginUntil; }
   }
-  async logout() {
-    await this.start();
-    if (this.turns.size)
-      throw new Error("Cancele ou aguarde as execuções antes de desconectar.");
-    await this.cancelLogin();
-    await this.rpc("account/logout");
-    this.loginError = null;
-  }
-  async models(): Promise<ModelCapability[]> {
-    await this.start();
+  private async nativeModels(): Promise<ModelCapability[]> {
     const r = await this.rpc<{
       data: { id: string; model: string; displayName: string; inputModalities?: string[]; isDefault?: boolean }[];
     }>("model/list", { limit: 100, includeHidden: false });
-    return r.data.map((m) => ({
+    const models = r.data.map((m) => ({
       id: m.model || m.id,
       name: m.displayName || m.model,
       inputModalities: m.inputModalities || ["text", "image"],
       isDefault: m.isDefault ?? r.data.length === 1,
     }));
+    if (this.lease) { this.lease.state.models = models; this.lease.state.modelsAt = Date.now(); }
+    return models;
   }
-  async run({
+  private async nativeRun({
     system,
     prompt,
     model,
@@ -383,7 +485,6 @@ export class ChatGPTBridge {
     tools = tools.map((tool) => ({ ...tool, call: AsyncLocalStorage.bind(tool.call) }));
     if (onText) onText = AsyncLocalStorage.bind(onText);
     if (onUsage) onUsage = AsyncLocalStorage.bind(onUsage);
-    await this.start();
     if (!(await this.account()).account)
       throw new Error("Conecte sua conta ChatGPT para executar este agente.");
     if (signal?.aborted) throw new Error("Execução cancelada.");
@@ -480,11 +581,8 @@ export class ChatGPTBridge {
         });
     });
   }
-  close() {
-    this.child?.kill();
-    this.failed(new Error("Conexão encerrada."));
-  }
-  get busy() { return this.turns.size > 0 || this.pending.size > 0 || !!this.login; }
+  close() { return this.shutdown().catch(() => {}); }
+  get busy() { return this.active || !!this.closing || this.turns.size > 0 || this.pending.size > 0 || !!this.login; }
 }
 const globalChat = globalThis as typeof globalThis & {
   agentflowsChatGPT?: ChatGPTBridge;

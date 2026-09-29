@@ -82,6 +82,5 @@ Docker passou com o cliente MCP oficial pela rede, contas separadas e resultado
 preservado após recriar containers. A jornada de navegador também passou.
 
 Os webhooks de WhatsApp e ElevenLabs ainda precisam migrar a identidade pública,
-a deduplicação dos eventos e a entrega das respostas pelo worker. A cifragem da
-sessão ChatGPT e a remoção dos demais repositórios legados também continuam
-pendentes em [SAAS-PLAN.md](SAAS-PLAN.md).
+a deduplicação dos eventos e a entrega das respostas pelo worker. A remoção dos
+demais repositórios legados também continua pendente em [SAAS-PLAN.md](SAAS-PLAN.md).

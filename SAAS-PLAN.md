@@ -12,7 +12,7 @@ Um tenant pessoal corresponde a um usuário autenticado. O ID vem da sessão ou
 do job validado; `user_id` participa das chaves e relações dos recursos. Não há
 seleção de tenant por um campo arbitrário enviado pelo cliente.
 
-Drizzle já define as 28 tabelas em `lib/db/schema.ts`, sem prefixo `saas_`, e gera
+Drizzle já define as 29 tabelas em `lib/db/schema.ts`, sem prefixo `saas_`, e gera
 as migrações em `drizzle/`. O pool PostgreSQL e as transações expõem o ORM tipado;
 o repositório de credenciais já usa suas operações. A conversão das demais
 consultas e remoção dos módulos legados está em andamento. SQL parametrizado
@@ -85,6 +85,17 @@ aviso preexistente do avatar. Docker passou com cliente MCP oficial pela rede,
 webhook enfileirado, contas A/B, worker e consulta após recriar containers.
 Navegador passou novamente em desktop/celular. WhatsApp/ElevenLabs ainda exigem
 migração dos canais.
+
+Sessão ChatGPT persistida em `chatgpt_sessions` cifrada por usuário, com trava
+entre app e workers, renovação, revogação e bloqueio de gravações antigas. O
+arquivo nativo fica em área temporária privada; app/worker usam tmpfs no Compose.
+Processos encerram ao fim da operação, salvo login pendente com prazo de dez
+minutos. A migração exige reconectar contas que usavam o cache anterior, removido
+ao abrir a nova conexão. Consulte [CHATGPT-SESSIONS.md](CHATGPT-SESSIONS.md).
+Validação: **296 testes gerais e 92 no PostgreSQL servidor**, build aprovado e
+lint sem erros (aviso preexistente no avatar). Docker passou com tmpfs, Codex
+instalado sem credenciais reais, login/turno simulado, persistência cifrada após
+recriar containers, dois workers e navegação desktop/celular.
 
 ## Histórico e inventário técnico (em revisão após a mudança de direção)
 
@@ -194,8 +205,8 @@ Implementado em `lib/saas-*.ts`:
   provedores vetoriais/record managers externos.
 - ChatGPT sem singleton compartilhado entre usuários, com até quatro conexões
   por processo, descarte de conexões ociosas e callbacks vinculados ao contexto
-  do turno. Ainda falta proteger a persistência do `auth.json` nativo do Codex
-  com cifragem em repouso e área temporária privada para o processo ativo.
+  do turno. A persistência nativa usa agora o cofre cifrado `chatgpt_sessions`,
+  com trava entre processos e área temporária privada (tmpfs no Docker).
 - APIs de autenticação e APIs de fluxos aplicam origem/CSRF, limitação real do
   corpo, respostas `no-store` e erros sem segredos. O proxy usa a sessão SaaS e
   ignora `CONTA_DESLIGADA` quando PostgreSQL está configurado; as rotas de recursos
@@ -348,8 +359,8 @@ devem impedir referências cruzadas mesmo quando um caller passar um ID errado.
    SQL) e capacidade acumulada de vetores antes do beta.
 2. Concluir a auditoria do contexto de execuções, webhooks de WhatsApp/ElevenLabs e
    todas as Server Components/APIs do inventário acima. Testar usuários A/B com
-   tentativas de acesso cruzado por IDs, arquivos e tokens públicos. Cifrar também
-   a sessão ChatGPT persistida; diretórios privados sozinhos não substituem cifragem.
+   tentativas de acesso cruzado por IDs, arquivos e tokens públicos. A sessão
+   ChatGPT persistida já está cifrada; detalhes em [CHATGPT-SESSIONS.md](CHATGPT-SESSIONS.md).
 3. Catálogo inicial de Replicate, Higgsfield e MuAPI integrado ao Agente/LLM,
    com chaves cifradas por usuário, submissão única, polling, cancelamento local
    e tentativa remota quando documentada. Nano Banana da Replicate aceita imagens;

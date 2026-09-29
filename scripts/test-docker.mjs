@@ -118,6 +118,44 @@ try {
     for (const id of fixture.runs) assert.equal((await request(fixture.tokenA, '/api/runs/' + id)).body.status, 'completed');
     await db.close();
   `);
+  console.log("Docker: checking encrypted ChatGPT session and native process isolation...");
+  await inside(common + `
+    import { randomUUID } from 'node:crypto';
+    import { spawn } from 'node:child_process';
+    import { statfsSync, existsSync } from 'node:fs';
+    import { withTenantJob } from './lib/tenant-context.ts';
+    import { ChatGPTBridge } from './lib/chatgpt.ts';
+    import { readChatSession } from './lib/chatgpt-session.ts';
+    const fixture = JSON.parse(await readFile('/app/data/docker-test.json', 'utf8'));
+    const chatOwner = randomUUID();
+    await db.query("INSERT INTO users(id,name,email,email_verified_at,beta_status) VALUES($1,'Chat fixture',$2,now(),'approved')", [chatOwner, chatOwner + '@example.com']);
+    fixture.chatOwner = chatOwner;
+    await writeFile('/app/data/docker-test.json', JSON.stringify(fixture), { mode: 0o600 });
+    assert.equal(Number(statfsSync('/tmp').type), 0x01021994);
+    const directories = [];
+    const bridge = await withTenantJob(db, chatOwner, () => new ChatGPTBridge(options => {
+      directories.push(options.env.CODEX_HOME);
+      return spawn(process.execPath, ['/app/scripts/fixtures/codex-protocol.mjs'], { ...options, stdio: 'pipe' });
+    }));
+    try {
+      await withTenantJob(db, chatOwner, () => bridge.beginLogin());
+      for (let i=0; i<100; i++) {
+        const saved = await withTenantJob(db, chatOwner, readChatSession);
+        if (saved.state.account && !saved.busy) break;
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      assert.equal((await withTenantJob(db, chatOwner, () => bridge.account())).account.email, 'test@example.com');
+      assert.equal(await withTenantJob(db, chatOwner, () => bridge.run({ system: '', prompt: 'Hello' })), 'Olá mundo');
+      assert.ok(directories.every(directory => !existsSync(directory)));
+      assert.ok(!JSON.stringify((await db.query('SELECT * FROM chatgpt_sessions')).rows).includes('fixture-refresh'));
+      assert.equal((await withTenantJob(db, fixture.b, readChatSession)).state.auth, null);
+    } finally { await bridge.close(); }
+    // Start the actual installed Codex in an empty account, without real credentials.
+    const native = await withTenantJob(db, fixture.b, () => new ChatGPTBridge());
+    try { await withTenantJob(db, fixture.b, () => assert.rejects(native.usage(), /Conecte sua conta/)); }
+    finally { await native.close(); }
+    await db.close();
+  `);
   console.log("Docker: checking public chat tickets and shared worker...");
   await inside(common + `
     const fixture = JSON.parse(await readFile('/app/data/docker-test.json', 'utf8'));
@@ -189,7 +227,11 @@ try {
   await compose("up", "-d", "--no-build", "--wait", "--wait-timeout", "180");
   await inside(common + `
     import { unseal } from './lib/saas-security.ts';
+    import { withTenantJob } from './lib/tenant-context.ts';
+    import { readChatSession } from './lib/chatgpt-session.ts';
     const fixture = JSON.parse(await readFile('/app/data/docker-test.json', 'utf8'));
+    assert.equal((await withTenantJob(db, fixture.chatOwner, readChatSession)).state.account.email, 'test@example.com');
+    assert.equal((await withTenantJob(db, fixture.b, readChatSession)).state.auth, null);
     assert.equal(unseal(fixture.encrypted, 'docker-test'), 'persisted-secret');
     assert.equal((await request(fixture.tokenA, '/api/flows/' + fixture.flowId)).status, 200);
     assert.equal((await request(fixture.tokenB, '/api/flows/' + fixture.flowId)).status, 404);

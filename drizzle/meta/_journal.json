@@ -15,6 +15,13 @@
       "when": 1790692169948,
       "tag": "0001_private-embed",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790699030402,
+      "tag": "0002_encrypted-chatgpt-session",
+      "breakpoints": true
     }
   ]
 }

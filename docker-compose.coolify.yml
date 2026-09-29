@@ -25,6 +25,8 @@ services:
       HOSTNAME: 0.0.0.0
     volumes:
       - dados:/app/data
+    tmpfs:
+      - /tmp:size=268435456,mode=1777,nosuid,nodev
     depends_on:
       postgres:
         condition: service_healthy
@@ -51,6 +53,8 @@ services:
     environment: *app-environment
     volumes:
       - dados:/app/data
+    tmpfs:
+      - /tmp:size=268435456,mode=1777,nosuid,nodev
     depends_on:
       postgres:
         condition: service_healthy

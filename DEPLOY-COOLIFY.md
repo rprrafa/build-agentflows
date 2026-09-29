@@ -93,8 +93,8 @@ A jornada opcional com Playwright também passou em desktop e celular; veja
 ## Persistência e recuperação
 
 - `postgres-dados`: contas, sessões, credenciais cifradas, fluxos, anexos,
-  conhecimento, convites e jobs.
-- `dados`: diretórios privados de ferramentas, FAISS e processos ChatGPT,
+  conhecimento, convites, sessão ChatGPT cifrada e jobs.
+- `dados`: diretórios privados de ferramentas e FAISS,
   compartilhados entre app e worker.
 - `redis-dados`: AOF dos avisos da fila. A fila durável permanece no PostgreSQL.
 
@@ -119,3 +119,8 @@ ser validados.
 
 Referências: [Docker Compose no Coolify](https://coolify.io/docs/applications/builds/docker-compose)
 e [serviços do Compose](https://docs.docker.com/reference/compose-file/services/).
+
+A autenticação ChatGPT usa um cofre cifrado no PostgreSQL e uma cópia temporária
+em tmpfs por processo. App e worker montam `/tmp` com limite de 256 MiB; preserve
+essa montagem no Coolify. Veja [CHATGPT-SESSIONS.md](CHATGPT-SESSIONS.md) para
+atualização, revogação e limites da recuperação após queda.

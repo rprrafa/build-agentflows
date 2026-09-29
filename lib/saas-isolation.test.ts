@@ -337,7 +337,7 @@ test("arquivos de ferramentas, ChatGPT e índices FAISS têm namespaces privados
 });
 
 test("ChatGPT reutiliza apenas a conexão do dono e ferramentas herdam o contexto do turno atual", async () => {
-  const launch = () => spawn(process.execPath, ["scripts/fixtures/codex-protocol.mjs"], { stdio: "pipe" });
+  const launch = (options: { env: NodeJS.ProcessEnv; cwd: string }) => spawn(process.execPath, [join(process.cwd(), "scripts/fixtures/codex-protocol.mjs")], { ...options, stdio: "pipe" });
   const bridgeA = await asA(() => new ChatGPTBridge(launch));
   const bridgeB = await asB(() => new ChatGPTBridge(launch));
   try {
@@ -355,7 +355,7 @@ test("ChatGPT reutiliza apenas a conexão do dono e ferramentas herdam o context
     });
     assert.notEqual(await asA(chatGPT), await asB(chatGPT));
     assert.equal(await asA(chatGPT), await asA(chatGPT));
-  } finally { bridgeA.close(); bridgeB.close(); }
+  } finally { await bridgeA.close(); await bridgeB.close(); }
 });
 
 test("HTTP ignora owner forjado, aplica beta, CSRF, corpo limitado e respostas privadas", async () => {

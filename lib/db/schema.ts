@@ -48,6 +48,12 @@ export const credentials = pgTable("credentials", {
   user_id: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }), key: text("key").notNull(),
   ciphertext: text("ciphertext").notNull(), updated_at: time("updated_at").notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.user_id, t.key] }), check("credentials_key", sql`length(${t.key}) BETWEEN 1 AND 200`)]);
+export const chatgptSessions = pgTable("chatgpt_sessions", {
+  user_id: uuid("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  ciphertext: text("ciphertext"), lease_token: uuid("lease_token"), lease_until: time("lease_until"),
+  updated_at: time("updated_at").notNull().defaultNow(),
+}, (t) => [check("chatgpt_sessions_size", sql`${t.ciphertext} IS NULL OR octet_length(${t.ciphertext})<=1048576`),
+  check("chatgpt_sessions_lease", sql`(${t.lease_token} IS NULL)=(${t.lease_until} IS NULL)`)]);
 export const flows = pgTable("flows", {
   user_id: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }), id: text("id").notNull(), body: jsonb("body").$type<Flow>().notNull(),
   sequence: bigint("sequence", { mode: "number" }).generatedAlwaysAsIdentity(), revision: bigint("revision", { mode: "number" }).notNull().default(1),

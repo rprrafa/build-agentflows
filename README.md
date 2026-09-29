@@ -135,8 +135,9 @@ recusada. Somente as ferramentas selecionadas no bloco são oferecidas ao agente
 
 PostgreSQL persiste contas, configurações cifradas, credenciais, fluxos, execuções
 e conhecimento por usuário. Arquivos locais usam `DATA_DIR/users/<user_id>`.
-A sessão ChatGPT já tem diretório privado, mas sua cifragem persistente ainda
-é uma pendência da migração. Restrinja o acesso aos volumes e backups.
+A sessão ChatGPT fica cifrada no PostgreSQL, com trava compartilhada entre app e
+worker. O arquivo nativo só existe em uma área temporária privada, em memória no
+Docker, e é removido ao encerrar a operação. Veja [CHATGPT-SESSIONS.md](CHATGPT-SESSIONS.md).
 
 As variáveis atuais estão em `.env.example`. PostgreSQL e `CHAVE_MESTRA` são
 obrigatórios; credenciais de IA e ferramentas pertencem a cada usuário e não
