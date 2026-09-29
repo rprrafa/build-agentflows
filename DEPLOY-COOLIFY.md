@@ -79,14 +79,16 @@ locais precisam de validação adicional antes de escalar réplicas. O shutdown 
 
 `npm run test:docker` compila a imagem e cria um projeto Compose temporário com
 credenciais aleatórias e envio de e-mail desativado. Valida API autenticada,
-isolamento entre contas, limite da fila, dois workers, Faiss e persistência após
-recriar os containers. Ao terminar, remove somente seus containers e volumes.
+isolamento entre contas, limite da fila, dois workers, Faiss, chat incorporado e
+persistência após recriar os containers. Ao terminar, remove somente seus containers e volumes.
 Não utiliza o `.env` nem os volumes da aplicação. Docker precisa estar em execução;
 se o executável não estiver no PATH, defina `DOCKER_BIN` com seu caminho completo.
 `AGENTFLOWS_TEST_IMAGE` permite testar uma imagem já compilada.
 
 O teste de containers passou no Docker Desktop com Linux ARM64. A validação do
 host Coolify e das integrações externas continua necessária antes da publicação.
+A jornada opcional com Playwright também passou em desktop e celular; veja
+[EMBED-TENANTS.md](EMBED-TENANTS.md) para reproduzir.
 
 ## Persistência e recuperação
 
@@ -111,8 +113,9 @@ Confirme healthchecks, migrações e envio real de confirmação/recuperação; 
 login Google com o domínio final e jornadas com duas contas. Reinicie o worker
 durante uma tarefa de teste e confira que ela termina como interrompida sem
 repetir efeitos. Valide restauração do backup, cancelamento entre processos e
-persistência após redeploy. O build da imagem e a subida do Compose ainda precisam
-ser executados em um host Docker; testes locais de SQL não substituem essa etapa.
+persistência após redeploy no host final. O build da imagem e a subida do Compose
+já passaram no Docker local; o ambiente Coolify e a restauração ainda precisam
+ser validados.
 
 Referências: [Docker Compose no Coolify](https://coolify.io/docs/applications/builds/docker-compose)
 e [serviços do Compose](https://docs.docker.com/reference/compose-file/services/).

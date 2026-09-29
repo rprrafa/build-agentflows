@@ -8,6 +8,13 @@
       "when": 1790679539636,
       "tag": "0000_tenant-foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790692169948,
+      "tag": "0001_private-embed",
+      "breakpoints": true
     }
   ]
 }

@@ -12,7 +12,7 @@ Um tenant pessoal corresponde a um usuário autenticado. O ID vem da sessão ou
 do job validado; `user_id` participa das chaves e relações dos recursos. Não há
 seleção de tenant por um campo arbitrário enviado pelo cliente.
 
-Drizzle já define as 24 tabelas em `lib/db/schema.ts`, sem prefixo `saas_`, e gera
+Drizzle já define as 28 tabelas em `lib/db/schema.ts`, sem prefixo `saas_`, e gera
 as migrações em `drizzle/`. O pool PostgreSQL e as transações expõem o ORM tipado;
 o repositório de credenciais já usa suas operações. A conversão das demais
 consultas e remoção dos módulos legados está em andamento. SQL parametrizado
@@ -65,6 +65,15 @@ Validação da remoção: **267 testes gerais e 56 no PostgreSQL servidor**, bui
 concluído e lint sem erros. Teste HTTP OAuth cobre origem forjada, estado ausente,
 estado de outra conta, armazenamento privado e tentativa de repetição.
 
+Chat incorporado migrado para PostgreSQL: tickets e sessões vinculados ao dono,
+visitante, origem e chave; anexos privados por conversa; comandos atômicos e
+mensagens executadas pela fila compartilhada. O worker exclusivo e as tabelas
+SQLite do embed foram removidos. Detalhes em [EMBED-TENANTS.md](EMBED-TENANTS.md).
+Validação atual: **281 testes gerais e 76 no PostgreSQL servidor**, build e lint
+sem erros (um aviso preexistente no avatar). Docker passou com dois workers,
+chat público, isolamento e volumes. Navegador passou com contas A/B, preview em
+iframe, envio, recarga e layouts desktop/celular, usando serviços locais.
+
 ## Histórico e inventário técnico (em revisão após a mudança de direção)
 
 Etapa de imagens validada com **280 testes gerais e 57 no PostgreSQL servidor**,
@@ -86,8 +95,8 @@ A configuração `DATABASE_URL` é obrigatória na arquitetura alvo; os ramos
 de compatibilidade existentes serão removidos na próxima etapa. **O modo SaaS ainda está em migração e
 não está pronto para produção**: autenticação e biblioteca de fluxos já usam
 PostgreSQL, assim como configurações, credenciais, anexos privados e conhecimento.
-O motor privado e a fila/worker já usam os repositórios por usuário; as integrações
-públicas ainda estão pendentes. Esses caminhos não podem cair no SQLite global:
+O motor privado, o chat incorporado e a fila/worker já usam os repositórios por
+usuário; webhooks e MCP públicos ainda estão pendentes. Esses caminhos não podem cair no SQLite global:
 o armazenamento legado falha explicitamente quando há contexto SaaS ou
 `DATABASE_URL`. Não liberar o beta enquanto houver funcionalidades pendentes.
 
@@ -165,7 +174,8 @@ Implementado em `lib/saas-*.ts`:
   documentos/imagens e marcação de uso nunca aceitam anexo de outra conta/fluxo.
   Limite de 100 MB/2.000 anexos por conta e expiração de abandonados após um dia
   durante novos uploads. Exclusão do fluxo remove os bytes por FK composta.
-  O embed ainda depende da migração da identidade pública e do motor.
+  O embed exige ticket e vínculo com a conversa para upload/download; imagens
+  geradas só podem ser baixadas pela conversa que as produziu.
 - Diretórios de arquivos de ferramentas, FAISS e ChatGPT por usuário;
   rejeição de symlinks nos diretórios privados e namespaces por dono também nos
   provedores vetoriais/record managers externos.
@@ -305,7 +315,7 @@ repositórios, incluindo Server Components e workers; o proxy sozinho não basta
 | Anexos e arquivos de ferramentas | Anexos SaaS transacionais no PostgreSQL; arquivos de ferramentas em diretórios privados, com validação de caminho. |
 | FAISS e bancos vetoriais/record managers externos | Namespaces por usuário/base/geração; verificar conexão/credencial do dono; limpeza nunca alcança outra conta. |
 | Impressão e histórico de execuções | Páginas e APIs usam `runs` por usuário. O histórico genérico `resultados` foi removido. |
-| Embed settings/sessions/commands/requests/jobs | Ticket, origem, fluxo e dono vinculados; polling, anexos e retomadas não cruzam contas. |
+| Embed settings/sessions/commands/requests | Migrados com ticket, origem, fluxo e dono vinculados; jobs usam a fila comum. Polling, anexos e aprovações não cruzam contas. |
 | Webhooks WhatsApp/ElevenLabs/flows e MCP | Endereço/token por usuário ou instalação; resolver dono antes de ler configurações, validar segredo e aplicar limites. |
 | ChatGPT/Codex e caches MCP/modelos | Remover singletons globais de conta/conexão; diretórios e caches por usuário, credencial e serviço. |
 
@@ -322,7 +332,7 @@ devem impedir referências cruzadas mesmo quando um caller passar um ID errado.
    propagação de cancelamento já estão implementados. Auditar também
    acesso de conexões configuráveis à rede interna da instalação (HTTP e drivers
    SQL) e capacidade acumulada de vetores antes do beta.
-2. Concluir a auditoria do contexto de execuções, embed, webhooks, MCP e
+2. Concluir a auditoria do contexto de execuções, webhooks, MCP e
    todas as Server Components/APIs do inventário acima. Testar usuários A/B com
    tentativas de acesso cruzado por IDs, arquivos e tokens públicos. Cifrar também
    a sessão ChatGPT persistida; diretórios privados sozinhos não substituem cifragem.
@@ -337,8 +347,9 @@ devem impedir referências cruzadas mesmo quando um caller passar um ID errado.
    real entre processos, idempotência dos provedores e shutdown na imagem final.
    Não repetir automaticamente efeitos externos cujo resultado seja incerto.
 5. Compose Coolify preparado com app, worker, PostgreSQL, Redis, volumes,
-   healthchecks, limites e migrações. Validar a imagem e os serviços no Docker,
-   persistência/restart e restauração de backup antes de abrir o beta.
+   healthchecks, limites e migrações. Imagem, serviços e persistência/restart
+   validados no Docker local. Validar o host Coolify e restauração de backup
+   antes de abrir o beta.
 6. Validação final: suíte inteira, lint, build, navegador A/B, PostgreSQL servidor,
    Redis/worker, falha e recuperação, restart/volumes, isolamento das rotas públicas
    e privadas. Confirmar configurações reais Resend/Google quando disponíveis.

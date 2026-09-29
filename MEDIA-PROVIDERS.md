@@ -46,8 +46,10 @@ de 100 MB ou 2.000 anexos por usuário. Remover o fluxo libera os arquivos.
 
 `{{last}}` e `{{nodes.id}}` passam o Markdown aos blocos seguintes. Eles não
 transformam automaticamente esse link em uma nova imagem de entrada; para outra
-edição, baixe e anexe o resultado à mensagem. Integrações públicas ainda em
-migração não recebem acesso aos anexos privados.
+edição, baixe e anexe o resultado à mensagem. No chat incorporado, o download
+exige ticket e vínculo com a conversa que gerou a imagem; veja
+[EMBED-TENANTS.md](EMBED-TENANTS.md). Webhooks e MCP públicos ainda em migração
+não recebem acesso aos anexos privados.
 
 Não há repetição automática de submissões após resposta incerta. Cancelar
 interrompe o acompanhamento local e tenta cancelar na Replicate/Higgsfield.

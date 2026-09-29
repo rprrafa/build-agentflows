@@ -58,6 +58,7 @@ export const runs = pgTable("runs", {
 }, (t) => [primaryKey({ columns: [t.user_id, t.id] }), foreignKey({ columns: [t.user_id, t.flow_id], foreignColumns: [flows.user_id, flows.id] }).onDelete("cascade"),
   check("runs_status", sql`${t.status} IN ('running','waiting','completed','failed','cancelled')`),
   check("runs_body", sql`${t.body}->>'id'=${t.id} AND ${t.body}->>'flowId'=${t.flow_id} AND ${t.body}->>'status'=${t.status}`),
+  uniqueIndex("runs_parent").on(t.user_id, t.id, t.flow_id),
   index("runs_list").on(t.user_id, t.sequence.desc()), index("runs_flow").on(t.user_id, t.flow_id, t.status, t.sequence.desc())]);
 export const knowledgeBases = pgTable("knowledge_bases", {
   user_id: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }), id: text("id").notNull(),
@@ -115,3 +116,28 @@ export const jobs = pgTable("jobs", {
   index("jobs_queue").on(t.status, t.created_at), index("jobs_owner").on(t.user_id, t.status),
   uniqueIndex("jobs_active_resource").on(t.user_id, t.kind, t.resource_id).where(sql`${t.status} IN ('queued','running')`)]);
 export const workerHeartbeats = pgTable("worker_heartbeats", { id: uuid("id").primaryKey(), updated_at: time("updated_at").notNull().defaultNow() });
+
+export const embedSettings = pgTable("embed_settings", {
+  user_id: uuid("user_id").notNull(), flow_id: text("flow_id").notNull(), body: jsonb("body").notNull(),
+}, (t) => [primaryKey({ columns: [t.user_id, t.flow_id] }), foreignKey({ columns: [t.user_id, t.flow_id], foreignColumns: [flows.user_id, flows.id] }).onDelete("cascade")]);
+export const embedSessions = pgTable("embed_sessions", {
+  user_id: uuid("user_id").notNull(), id: text("id").notNull(), flow_id: text("flow_id").notNull(), body: jsonb("body").notNull(),
+  created_at: time("created_at").notNull().defaultNow(), expires_at: time("expires_at").notNull(),
+}, (t) => [primaryKey({ columns: [t.user_id, t.id] }), uniqueIndex("embed_sessions_parent").on(t.user_id, t.id, t.flow_id),
+  foreignKey({ columns: [t.user_id, t.flow_id], foreignColumns: [flows.user_id, flows.id] }).onDelete("cascade"),
+  check("embed_sessions_body", sql`${t.body}->>'id'=${t.id} AND ${t.body}->>'flowId'=${t.flow_id}`), index("embed_sessions_expiry").on(t.expires_at)]);
+export const embedRequests = pgTable("embed_requests", {
+  user_id: uuid("user_id").notNull(), session_id: text("session_id").notNull(), request_id: text("request_id").notNull(),
+  flow_id: text("flow_id").notNull(), run_id: text("run_id").notNull(), created_at: time("created_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.user_id, t.session_id, t.request_id] }), uniqueIndex("embed_requests_run").on(t.user_id, t.session_id, t.run_id),
+  foreignKey({ columns: [t.user_id, t.session_id, t.flow_id], foreignColumns: [embedSessions.user_id, embedSessions.id, embedSessions.flow_id] }).onDelete("cascade"),
+  foreignKey({ columns: [t.user_id, t.run_id, t.flow_id], foreignColumns: [runs.user_id, runs.id, runs.flow_id] }).onDelete("cascade")]);
+export const embedCommands = pgTable("embed_commands", {
+  user_id: uuid("user_id").notNull(), id: text("id").notNull(), session_id: text("session_id").notNull(), run_id: text("run_id").notNull(),
+  status: text("status").notNull(), body: jsonb("body").notNull(), created_at: time("created_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.user_id, t.id] }),
+  foreignKey({ columns: [t.user_id, t.session_id, t.run_id], foreignColumns: [embedRequests.user_id, embedRequests.session_id, embedRequests.run_id] }).onDelete("cascade"),
+  check("embed_commands_status", sql`${t.status} IN ('pending','delivered','completed','failed','expired','cancelled')`),
+  check("embed_commands_body", sql`${t.body}->>'id'=${t.id} AND ${t.body}->>'runId'=${t.run_id} AND ${t.body}->>'sessionId'=${t.session_id} AND ${t.body}->>'status'=${t.status}`),
+  index("embed_commands_session").on(t.user_id, t.session_id, t.created_at.desc()),
+  uniqueIndex("embed_commands_active").on(t.user_id, t.run_id).where(sql`${t.status} IN ('pending','delivered')`)]);

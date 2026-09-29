@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { withEmbedOwner } from "@/lib/embed-http";
 import { effectiveEmbedOrigins } from "@/lib/embed-security";
-import { embedSettings } from "@/lib/embed-store";
+import { embedSettings, hasEmbedKey } from "@/lib/embed-store";
 import { findSession } from "@/lib/saas-auth";
 import { saasDatabase } from "@/lib/saas-db";
 import { sessionToken } from "@/lib/saas-http";
@@ -22,11 +23,11 @@ function rotaPublica(pathname: string, metodo: string): boolean {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  function permitir() {
+  async function permitir() {
     const response = NextResponse.next();
     if (pathname.startsWith("/embed/") || pathname.startsWith("/api/embed/")) response.headers.set("Cache-Control", "no-store");
     if (/^\/embed\/[a-zA-Z0-9-]+$/.test(pathname)) {
-      try { const s = embedSettings(pathname.split("/")[2]); s.origins = effectiveEmbedOrigins(s.origins); response.headers.set("Content-Security-Policy", "frame-ancestors " + (s.enabled && s.origins.length ? s.origins.join(" ") : "'none'") + ";"); }
+      try { const s = await withEmbedOwner(pathname.split("/")[2], async () => { const settings = await embedSettings(pathname.split("/")[2]); return { ...settings, enabled: settings.enabled && hasEmbedKey(pathname.split("/")[2]), origins: effectiveEmbedOrigins(settings.origins) }; }); response.headers.set("Content-Security-Policy", "frame-ancestors " + (s.enabled ? "'self' " + s.origins.join(" ") : "'none'") + ";"); }
       catch { response.headers.set("Content-Security-Policy", "frame-ancestors 'none';"); }
       response.headers.set("Referrer-Policy", "no-referrer");
     }

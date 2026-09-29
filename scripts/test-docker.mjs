@@ -5,10 +5,19 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
+import { createServer } from "node:net";
 
 const docker = process.env.DOCKER_BIN || "docker";
 const project = `agentflows-test-${randomBytes(6).toString("hex")}`;
 const image = process.env.AGENTFLOWS_TEST_IMAGE || `${project}:local`;
+let browserPort;
+if (process.env.PLAYWRIGHT_MODULE) {
+  const server = createServer();
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  browserPort = server.address().port;
+  await new Promise(resolve => server.close(resolve));
+}
+const origin = browserPort ? `http://127.0.0.1:${browserPort}` : "https://app.example.test";
 const dir = await mkdtemp(path.join(tmpdir(), project));
 const envFile = path.join(dir, "test.env"), override = path.join(dir, "compose.yml");
 const env = { ...process.env, PATH: `${path.dirname(docker)}:${process.env.PATH}` };
@@ -34,18 +43,18 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { saasDatabase } from './lib/saas-db.ts';
 const db = saasDatabase();
-async function request(token, pathname, data, method) {
+async function request(token, pathname, data, method, publicAccess = false) {
   const response = await fetch('http://127.0.0.1:10000' + pathname, {
     method: method || (data ? 'POST' : 'GET'),
-    headers: { cookie: 'agentflows_session=' + token, origin: process.env.APP_URL, 'content-type': 'application/json' },
+    headers: { ...(publicAccess ? { authorization: 'Bearer ' + token } : { cookie: 'agentflows_session=' + token }), origin: process.env.APP_URL, 'content-type': 'application/json' },
     body: data ? JSON.stringify(data) : undefined,
   });
   return { status: response.status, body: await response.json() };
 }
 `;
 try {
-  await writeFile(envFile, `APP_URL=https://app.example.test\nCHAVE_MESTRA=${randomBytes(32).toString("base64")}\nPOSTGRES_PASSWORD=${randomBytes(32).toString("hex")}\nREDIS_PASSWORD=${randomBytes(32).toString("hex")}\nRESEND_API_KEY=unused\nRESEND_FROM=test@example.com\n`, { mode: 0o600 });
-  await writeFile(override, `services:\n  app:\n    image: ${image}\n    environment:\n      RESEND_API_KEY: ""\n      RESEND_FROM: ""\n  worker:\n    image: ${image}\n    environment:\n      RESEND_API_KEY: ""\n      RESEND_FROM: ""\n`);
+  await writeFile(envFile, `APP_URL=${origin}\nCHAVE_MESTRA=${randomBytes(32).toString("base64")}\nPOSTGRES_PASSWORD=${randomBytes(32).toString("hex")}\nREDIS_PASSWORD=${randomBytes(32).toString("hex")}\nRESEND_API_KEY=unused\nRESEND_FROM=test@example.com\n`, { mode: 0o600 });
+  await writeFile(override, `services:\n  app:\n    image: ${image}\n${browserPort ? `    ports:\n      - "127.0.0.1:${browserPort}:10000"\n` : ""}    environment:\n      RESEND_API_KEY: ""\n      RESEND_FROM: ""\n  worker:\n    image: ${image}\n    environment:\n      RESEND_API_KEY: ""\n      RESEND_FROM: ""\n`);
   if (!process.env.AGENTFLOWS_TEST_IMAGE) {
     console.log("Docker: compiling image...");
     await command(["build", "-t", image, "."]);
@@ -109,6 +118,37 @@ try {
     for (const id of fixture.runs) assert.equal((await request(fixture.tokenA, '/api/runs/' + id)).body.status, 'completed');
     await db.close();
   `);
+  console.log("Docker: checking public chat tickets and shared worker...");
+  await inside(common + `
+    const fixture = JSON.parse(await readFile('/app/data/docker-test.json', 'utf8'));
+    const settings = await request(fixture.tokenA, '/api/flows/' + fixture.flowId + '/embed', { enabled: true, origins: ['https://customer.example'], title: 'Docker chat', welcome: 'Welcome', maxMinutes: 15, maxCommands: 3 }, 'PUT');
+    assert.equal(settings.status, 200);
+    assert.equal((await request(fixture.tokenB, '/api/flows/' + fixture.flowId + '/embed')).status, 404);
+    const key = (await request(fixture.tokenA, '/api/flows/' + fixture.flowId + '/embed', { action: 'rotate' })).body.key;
+    const ticket = await request(key, '/api/embed/token', { flowId: fixture.flowId, subject: 'visitor', origin: 'https://customer.example' }, 'POST', true);
+    assert.equal(ticket.status, 200);
+    const token = ticket.body.token;
+    const session = await request(token, '/api/embed/session', { action: 'connect', origin: 'https://customer.example', tabId: 'docker-tab-12345678', capabilities: [] }, 'POST', true);
+    assert.equal(session.status, 200);
+    const data = { action: 'message', sessionId: session.body.sessionId, requestId: 'docker-request-12345678', input: 'Public conversation', attachments: [] };
+    const sent = await request(token, '/api/embed/session', data, 'POST', true); assert.equal(sent.status, 200);
+    assert.equal((await request(token, '/api/embed/session', data, 'POST', true)).body.runId, sent.body.runId);
+    let completed = false;
+    for (let i=0; i<150; i++) {
+      const snapshot = await request(token, '/api/embed/session?id=' + session.body.sessionId, undefined, 'GET', true);
+      if (snapshot.body.turns?.[0]?.status === 'completed') { assert.equal(snapshot.body.turns[0].output, 'Worker completed'); completed = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    assert.ok(completed);
+    fixture.embed = { token, sessionId: session.body.sessionId };
+    await writeFile('/app/data/docker-test.json', JSON.stringify(fixture), { mode: 0o600 });
+    await db.close();
+  `);
+  if (browserPort) {
+    const fixture = JSON.parse(await inside("import { readFile } from 'node:fs/promises'; process.stdout.write(await readFile('/app/data/docker-test.json', 'utf8'));"));
+    const { verifyEmbedBrowser } = await import("./test-embed-browser.mjs");
+    await verifyEmbedBrowser(origin, fixture);
+  }
   console.log("Docker: recreating containers while retaining volumes...");
   await compose("down");
   await compose("up", "-d", "--no-build", "--wait", "--wait-timeout", "180");
@@ -126,7 +166,9 @@ try {
     assert.equal(Buffer.from(await image.arrayBuffer()).toString('base64'), fixture.png);
     assert.equal((await request(fixture.tokenB, '/api/attachments/' + fixture.imageId)).status, 404);
     for (const id of fixture.runs) assert.equal((await request(fixture.tokenA, '/api/runs/' + id)).body.status, 'completed');
-    assert.equal((await db.query("SELECT count(*)::int count FROM jobs WHERE status='done'")).rows[0].count, 10);
+    const snapshot = await request(fixture.embed.token, '/api/embed/session?id=' + fixture.embed.sessionId, undefined, 'GET', true);
+    assert.equal(snapshot.body.turns[0].output, 'Worker completed');
+    assert.ok((await db.query("SELECT count(*)::int count FROM jobs WHERE status='done'")).rows[0].count >= 11);
     await db.close();
   `);
   const status = (await compose("ps", "--format", "json")).trim().split("\n").map((line) => JSON.parse(line));

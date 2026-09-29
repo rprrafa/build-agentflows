@@ -7,15 +7,15 @@ import { persistTenantRun } from "./tenant-flows";
 import type { Run } from "./flow-types";
 
 export type Job = { id: string; user_id: string; kind: "run" | "index" | "extract"; resource_id: string; run_id: string | null; base_id: string | null; source_id: string | null; status: string; lease_token: string | null; error: string | null };
-const queueLock = (sql: Sql) => sql.query("SELECT pg_advisory_xact_lock(742193802)");
-async function capacity(sql: Sql, owner: string) {
+export const queueLock = (sql: Sql) => sql.query("SELECT pg_advisory_xact_lock(742193802)");
+export async function capacity(sql: Sql, owner: string) {
   await queueLock(sql);
   const user = await sql.query("SELECT id FROM users WHERE id=$1 AND beta_status='approved' AND email_verified_at IS NOT NULL FOR UPDATE", [owner]);
   if (!user.rows.length) throw new FlowError("Acesso ao beta pendente ou suspenso.", 403);
   const { rows } = await sql.query<{ own: number; total: number }>("SELECT count(*) FILTER(WHERE user_id=$1)::int own,count(*)::int total FROM jobs WHERE status IN ('queued','running') OR (status='cancelled' AND lease_until IS NOT NULL)", [owner]);
   if (rows[0].own >= 10 || rows[0].total >= 1000) throw new FlowError("A fila atingiu o limite. Aguarde as tarefas em andamento.", 429);
 }
-async function insertJob(sql: Sql, job: Pick<Job, "user_id" | "kind" | "resource_id" | "run_id" | "base_id" | "source_id">) {
+export async function insertJob(sql: Sql, job: Pick<Job, "user_id" | "kind" | "resource_id" | "run_id" | "base_id" | "source_id">) {
   const id = randomUUID();
   const { rows } = await sql.query<Job>(`INSERT INTO jobs(id,user_id,kind,resource_id,run_id,base_id,source_id)
     VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING RETURNING *`, [id, job.user_id, job.kind, job.resource_id, job.run_id, job.base_id, job.source_id]);
@@ -108,6 +108,7 @@ export async function recoverExpiredJobs(db: Database) {
       await sql.query("UPDATE jobs SET status='interrupted',error=$2,finished_at=now(),lease_until=NULL WHERE id=$1", [job.id, error]);
       if (job.run_id) await sql.query(`UPDATE runs SET status='failed',body=body || $3::jsonb
         WHERE user_id=$1 AND id=$2 AND status='running'`, [job.user_id, job.run_id, JSON.stringify({ status: "failed", interrupted: true, error, updatedAt: new Date().toISOString() })]);
+      if (job.run_id) await sql.query("UPDATE embed_commands SET status='cancelled',body=body || '{\"status\":\"cancelled\"}'::jsonb WHERE user_id=$1 AND run_id=$2 AND status IN ('pending','delivered')", [job.user_id, job.run_id]);
       if (job.base_id) {
         await sql.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [job.user_id]);
         await sql.query("SELECT id FROM knowledge_bases WHERE user_id=$1 AND id=$2 FOR UPDATE", [job.user_id, job.base_id]);

@@ -44,6 +44,17 @@ export function EmbedChat({ agentName, avatarUrl, title, welcome }: { agentName:
     return () => observer.disconnect();
   }, [draft]);
   function post(type: string, data: Record<string, unknown> = {}) { if (state.current.parent) window.parent.postMessage({ channel: "agentflows", version: 1, type, ...data }, state.current.parent); }
+  async function downloadImage(id: string, name: string) {
+    try {
+      const response = await fetch(`/api/embed/attachments/${encodeURIComponent(id)}?sessionId=${encodeURIComponent(state.current.sessionId)}`, {
+        headers: { Authorization: "Bearer " + state.current.token }, credentials: "omit", cache: "no-store",
+      });
+      if (!response.ok) throw new Error((await response.json()).error || "Não foi possível baixar a imagem.");
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a"); link.href = url; link.download = name; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (error) { setError(error instanceof Error ? error.message : "Não foi possível baixar a imagem."); }
+  }
   async function api(payload?: Record<string, unknown>, path = "/api/embed/session", form?: FormData) {
     const res = await fetch(payload || form ? path : path + "?id=" + encodeURIComponent(state.current.sessionId), {
       method: payload || form ? "POST" : "GET", cache: "no-store", credentials: "omit",
@@ -197,8 +208,8 @@ export function EmbedChat({ agentName, avatarUrl, title, welcome }: { agentName:
         return <div className="embed-turn" key={t.id}>
           {mostrarEntradaDia && <div className="embed-date-separator"><span>{entradaDia.texto}</span></div>}
           <div className="embed-chat-message user"><div className="embed-message user">{t.input}</div><time className="embed-time" dateTime={t.createdAt} title={new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short" }).format(new Date(t.createdAt))}>{tempoRelativo(t.createdAt)}</time></div>
-          {respostaVisivel && <>{mostrarRespostaDia && respostaDia && <div className="embed-date-separator"><span>{respostaDia.texto}</span></div>}<div className="embed-chat-message assistant"><div className="embed-message assistant">{t.output}</div><time className="embed-time" dateTime={respostaHora} title={new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short" }).format(new Date(respostaHora))}>{tempoRelativo(respostaHora)}</time></div></>}
-          {t.status === "waiting" && <div className="embed-approval"><strong>{t.approval === "recovery" ? "Precisamos conferir antes de continuar" : "Sua decisão faz parte do próximo passo"}</strong><p>{t.approval === "recovery" ? t.error : "Revise o resultado acima e escolha como seguir."}</p><div><button disabled={busy || !connected} onClick={() => t.approval === "recovery" ? setConfirmation({runId:t.id, decision:"retry"}) : void decision(t.id, "yes")}>{t.approval === "recovery" ? "Revisar retomada" : "Aprovar e continuar"}</button>{t.approval !== "recovery" && <button className="secondary" disabled={busy || !connected} onClick={() => void decision(t.id, "no")}>Não aprovar</button>}</div></div>}
+          {respostaVisivel && <>{mostrarRespostaDia && respostaDia && <div className="embed-date-separator"><span>{respostaDia.texto}</span></div>}<div className="embed-chat-message assistant"><div className="embed-message assistant">{t.images?.length ? t.output.replace(/!\[[^\]]*\]\(\/api\/attachments\/[0-9a-f-]{36}\)/g, "Imagem gerada.") : t.output}{t.images?.map(image => <p key={image.id}><button onClick={() => void downloadImage(image.id, image.name)}>Baixar {image.name}</button></p>)}</div><time className="embed-time" dateTime={respostaHora} title={new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short" }).format(new Date(respostaHora))}>{tempoRelativo(respostaHora)}</time></div></>}
+          {t.status === "waiting" && <div className="embed-approval"><strong>{"Sua decisão faz parte do próximo passo"}</strong><p>{"Revise o resultado acima e escolha como seguir."}</p><div><button disabled={busy || !connected} onClick={() => void decision(t.id, "yes")}>Aprovar e continuar</button>{<button className="secondary" disabled={busy || !connected} onClick={() => void decision(t.id, "no")}>Não aprovar</button>}</div></div>}
           {t.status === "failed" && <p className="embed-error">{t.error || "Não foi possível concluir esta tarefa."}</p>}
           {t.status === "cancelled" && <p className="embed-note">Cancelamento solicitado. Novas etapas foram bloqueadas; ações externas já iniciadas podem terminar.</p>}
         </div>;

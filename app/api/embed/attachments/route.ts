@@ -1,16 +1,22 @@
-import { api } from "@/lib/flow-api";
-import { authenticateEmbed, ownedSession, putSession } from "@/lib/embed-store";
+import { embedApi } from "@/lib/embed-http";
+import { ownedSession, updateSession } from "@/lib/embed-store";
 import { saveAttachment, uploadForm } from "@/lib/attachment-service";
 import { FlowError } from "@/lib/flow-store";
+import { consumeRateLimit } from "@/lib/saas-rate-limit";
+import { currentTenant } from "@/lib/tenant-context";
 export async function POST(req: Request) {
-  return api(async () => {
-    const identity = authenticateEmbed(req), form = await uploadForm(req);
-    const s = ownedSession(String(form.get("sessionId")), identity);
-    if (s.attachments.length >= 50) throw new FlowError("Limite de anexos desta conversa atingido.");
+  return embedApi(req, async identity => {
+    const { db, user } = currentTenant();
+    await consumeRateLimit(db, `embed-upload:user:${user.id}`, 20, 60);
+    const form = await uploadForm(req), session = await ownedSession(String(form.get("sessionId")), identity);
+    if (session.attachments.length >= 50) throw new FlowError("Limite de anexos desta conversa atingido.");
     const file = form.get("file");
     if (!(file instanceof File)) throw new FlowError("Escolha um arquivo.");
-    const a = await saveAttachment(s.flowId, file);
-    const latest = ownedSession(s.id, identity); latest.attachments.push(a.id); putSession(latest);
-    return a;
+    const attachment = await saveAttachment(session.flowId, file);
+    await updateSession(session.id, latest => {
+      if (latest.attachments.length >= 50) throw new FlowError("Limite de anexos desta conversa atingido.");
+      latest.attachments.push(attachment.id);
+    });
+    return attachment;
   });
 }

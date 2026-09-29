@@ -101,7 +101,9 @@ com acesso ao beta. Criar uma execução retorna HTTP 202; o worker processa a f
 e a interface consulta o progresso. Fluxos, extração e indexação compartilham
 uma vaga por usuário, com duas tarefas simultâneas globalmente.
 
-Embed, webhooks e MCP ainda estão em migração para autenticação por proprietário.
+O chat incorporado usa tickets vinculados ao proprietário e à conversa, anexos
+privados e a mesma fila dos fluxos. Veja [EMBED-TENANTS.md](EMBED-TENANTS.md).
+Webhooks e MCP ainda estão em migração para autenticação por proprietário.
 Não habilite essas integrações em produção até concluir as pendências de
 [SAAS-PLAN.md](SAAS-PLAN.md). Os módulos herdados de formulários públicos,
 rotinas e histórico genérico de resultados foram removidos por não terem
@@ -184,7 +186,7 @@ Nos conjuntos de ferramentas novos, nenhuma ação fica autorizada antes da sele
 
 Brave Search MCP e Postgres MCP executam servidores locais instalados como dependências, com credenciais isoladas e encerramento da sessão após cada consulta/chamada. Github MCP e Browserless usam os endpoints oficiais remotos. Custom MCP conecta servidores HTTP/SSE por URL e token opcional. O build standalone inclui os pacotes dos servidores locais. Os ícones vieram da referência Flowise; veja `public/tool-icons/NOTICE.md`.
 
-Em **Credenciais**, é possível buscar, criar, editar e excluir conexões. Há várias contas por serviço, e cada cartão guarda apenas o ID da conta escolhida. Credenciais nomeadas ficam cifradas no SQLite; respostas de API, navegador e exportação do fluxo não recebem os segredos. Deixar uma chave em branco ao editar preserva o valor salvo. A execução usa a conta selecionada em um contexto assíncrono isolado, inclusive na renovação OAuth, sem alterar a conexão global nem herdar campos faltantes de outras contas. A exclusão é recusada enquanto a credencial está referenciada por um fluxo salvo, uma execução em andamento ou uma base de conhecimento. Chaves de embedding existentes são migradas automaticamente; a base guarda o ID da conexão e a execução resolve a chave cifrada atual. Se o endereço de uma conexão mudar, selecione-a novamente na base e reindexe.
+Em **Credenciais**, é possível buscar, criar, editar e excluir conexões. Há várias contas por serviço, e cada cartão guarda apenas o ID da conta escolhida. Credenciais nomeadas ficam cifradas no PostgreSQL e vinculadas ao usuário; respostas de API, navegador e exportação do fluxo não recebem os segredos. Deixar uma chave em branco ao editar preserva o valor salvo. A execução usa a conta selecionada em um contexto assíncrono isolado, inclusive na renovação OAuth, sem alterar a conexão global nem herdar campos faltantes de outras contas. A exclusão é recusada enquanto a credencial está referenciada por um fluxo salvo, uma execução em andamento ou uma base de conhecimento. Chaves de embedding existentes são migradas automaticamente; a base guarda o ID da conexão e a execução resolve a chave cifrada atual. Se o endereço de uma conexão mudar, selecione-a novamente na base e reindexe.
 
 As configurações anteriores continuam disponíveis como **Conexão padrão existente**. Fluxos sem seleção explícita mantêm esse acesso. Conexões vindas do ambiente ficam protegidas contra edição e remoção pela tela; é possível cadastrar uma nova credencial independente. Remover uma ferramenta do agente não exclui sua credencial.
 

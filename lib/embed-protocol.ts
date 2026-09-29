@@ -21,6 +21,7 @@ export type EmbedTurn = {
   id: string; input: string; output: string; status: string; error?: string;
   activity: string; approval?: string; createdAt: string; updatedAt: string;
   attachments?: { id: string; name: string }[];
+  images?: { id: string; name: string }[];
 };
 export const ACTION_SCHEMA = {
   type: "object", properties: {

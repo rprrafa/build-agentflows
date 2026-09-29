@@ -1,20 +1,21 @@
-import { api, body } from "@/lib/flow-api";
+import { requestApi, body } from "@/lib/flow-api";
+import { appOrigin } from "@/lib/saas-security";
 import { embedSettings, hasEmbedKey, issueEmbedTicket, rotateEmbedKey, saveEmbedSettings } from "@/lib/embed-store";
-export async function GET(_: Request, c: { params: Promise<{id:string}> }) {
-  return api(async () => { const { id } = await c.params; return { settings: embedSettings(id), hasKey: hasEmbedKey(id) }; });
+export async function GET(req: Request, c: { params: Promise<{id:string}> }) {
+  return requestApi(req, async () => { const { id } = await c.params; return { settings: await embedSettings(id), hasKey: hasEmbedKey(id) }; });
 }
 export async function PUT(req: Request, c: { params: Promise<{id:string}> }) {
   // saveEmbedSettings validates every setting at runtime before persisting it.
-  return api(async () => saveEmbedSettings((await c.params).id, await body(req) as Parameters<typeof saveEmbedSettings>[1]));
+  return requestApi(req, async () => saveEmbedSettings((await c.params).id, await body(req) as Parameters<typeof saveEmbedSettings>[1]));
 }
 export async function POST(req: Request, c: { params: Promise<{id:string}> }) {
-  return api(async () => {
+  return requestApi(req, async () => {
     const { id } = await c.params, b = await body(req);
     if (b.action === "preview") {
-      if (embedSettings(id).enabled && !hasEmbedKey(id)) rotateEmbedKey(id);
-      const origin = req.headers.get("origin") || new URL(req.url).origin;
-      return issueEmbedTicket(id, "admin-preview", origin);
+      if ((await embedSettings(id)).enabled && !hasEmbedKey(id)) await rotateEmbedKey(id);
+      const origin = appOrigin();
+      return issueEmbedTicket(id, "admin-preview", origin, true);
     }
-    return { key: rotateEmbedKey(id) };
+    return { key: await rotateEmbedKey(id) };
   });
 }
