@@ -86,26 +86,22 @@ Coolify. Os volumes `dados`, `postgres-dados` e `redis-dados` preservam os arqui
 banco e notificações. Guarde a `CHAVE_MESTRA` do ambiente junto aos backups;
 sem ela as credenciais cifradas não podem ser recuperadas.
 
-## Publicar imagem e deploy no Render
+## Deploy e integrações
 
-O push na `main` publica `ghcr.io/startse/build-agentflows:latest` pelo workflow da suíte e gera a prévia do catálogo. O `render.yaml`, gerado a partir do catálogo, usa plano Starter e disco persistente de 1 GB. A imagem precisa estar pública para instalação sem autenticação no registro. Não use `CONTA_DESLIGADA` em produção.
+O deploy atual usa Docker Compose no Coolify, com PostgreSQL, Redis e worker.
+Siga [DEPLOY-COOLIFY.md](DEPLOY-COOLIFY.md); o fluxo antigo de publicação da suíte
+no Render não se aplica a este repositório.
 
-## Integração
+As APIs privadas `/api/flows` e `/api/runs` exigem sessão de uma conta verificada
+com acesso ao beta. Criar uma execução retorna HTTP 202; o worker processa a fila
+e a interface consulta o progresso. Fluxos, extração e indexação compartilham
+uma vaga por usuário, com duas tarefas simultâneas globalmente.
 
-Em **Implantar fluxo**, as abas principais são Chat no site e Integrações. Integrações reúne WhatsApp, Ligações, Developer e Conector MCP. Gere o código de acesso diretamente em Developer ou Conector MCP; os exemplos são preenchidos automaticamente. Em Developer, alterne entre cURL, JavaScript e Python para copiar o exemplo. Ele autentica tanto MCP quanto HTTP; revogação e rotação valem para os dois. É um acesso administrativo a esta instalação, não uma chave isolada por fluxo.
-
-```sh
-curl -X POST 'https://SEU-APP/webhook/flows/ID-DO-FLUXO' \
-  -H 'Authorization: Bearer SEU-CODIGO' \
-  -H 'Content-Type: application/json' \
-  -d '{"input":"Classifique esta solicitação"}'
-```
-
-A resposta inclui `id`, `status`, `output`, `error`, `demo` e `version`. `status` pode ser `completed`, `failed` ou `waiting`; uma falha de execução é registrada e retornada no corpo, portanto confira `status`, não apenas o HTTP 200. Rascunhos e publicações desativadas recusam a execução externa. Limite de 60 chamadas/minuto/código compartilhado com MCP.
-
-O servidor `POST /mcp` oferece `listar_fluxos`, `executar_fluxo`, `consultar_execucao` e `responder_aprovacao`. A aprovação também pode ser respondida na tela Execuções. Para um cliente automatizado, a decisão deve vir explicitamente da pessoa autorizada. Não compartilhe o código com consumidores que não possam consultar execuções ou decidir aprovações.
-
-As rotas de edição `/api/flows` e de acompanhamento `/api/runs` exigem sessão administrativa. As execuções são síncronas por segmento até terminar ou pausar; um consumidor deve permitir tempo suficiente para a resposta. O editor consulta o histórico durante a execução, com atualização parcial da resposta do ChatGPT.
+Embed, webhooks e MCP ainda estão em migração para autenticação por proprietário.
+Não habilite essas integrações em produção até concluir as pendências de
+[SAAS-PLAN.md](SAAS-PLAN.md). Os módulos herdados de formulários públicos,
+rotinas e histórico genérico de resultados foram removidos por não terem
+consumidores neste produto. A tela Execuções continua disponível por usuário.
 
 ### Dados entre blocos
 
@@ -116,15 +112,27 @@ As rotas de edição `/api/flows` e de acompanhamento `/api/runs` exigem sessão
 
 Referências ausentes interrompem a execução com diagnóstico. Após aprovação, `state.approval` contém `yes` ou `no`; para reutilizar o texto anterior, referencie o bloco que o produziu. Argumentos de ferramentas precisam resultar em JSON válido após interpolação.
 
-HTTP usa um endereço fixo definido pelo autor do fluxo, não interpolado a partir da entrada. Redirecionamentos são recusados. Para autenticação Bearer, configure `FLOW_SECRET_NOME` no ambiente e informe apenas esse nome no bloco. Não insira segredos em instruções, endereços, corpos ou arquivos exportados. Os blocos HTTP são uma capacidade administrativa e podem acessar serviços alcançáveis pelo servidor.
+HTTP usa um endereço fixo definido pelo autor do fluxo, sem interpolação a
+partir da entrada. Não insira segredos em instruções, endereços, corpos ou
+arquivos exportados. A revisão dos acessos a serviços internos ainda está
+pendente antes da abertura do beta.
 
 ## ChatGPT e persistência
 
-A conexão usa [Codex App Server](https://developers.openai.com/codex/app-server), com autenticação gerenciada pelo Codex e código de dispositivo. Não aceita chave OpenAI, OpenRouter ou outro provedor. Sem conexão, a execução real é recusada; a demonstração precisa ser escolhida explicitamente no painel de teste. Limites e modelos dependem da conta conectada. Uma conta ChatGPT é compartilhada pela instalação administrativa.
+A conexão usa [Codex App Server](https://developers.openai.com/codex/app-server)
+e autenticação por código de dispositivo. Cada usuário tem sua própria conexão;
+o processo não herda credenciais da máquina. Sem conexão, a execução real é
+recusada. Somente as ferramentas selecionadas no bloco são oferecidas ao agente.
 
-O diretório `DATA_DIR` guarda banco, chave mestra e a sessão privada em `chatgpt/`. Preserve todo o volume e restrinja acesso aos backups. O subprocesso usa ambiente isolado, sem herdar credenciais locais, terminal ou ferramentas de arquivos. Somente ferramentas explicitamente selecionadas no bloco são oferecidas ao agente.
+PostgreSQL persiste contas, configurações cifradas, credenciais, fluxos, execuções
+e conhecimento por usuário. Arquivos locais usam `DATA_DIR/users/<user_id>`.
+A sessão ChatGPT já tem diretório privado, mas sua cifragem persistente ainda
+é uma pendência da migração. Restrinja o acesso aos volumes e backups.
 
-Variáveis opcionais: `DATA_DIR`, `PORT`, `HOSTNAME`, `CHAVE_MESTRA`, `FERRAMENTAS_URL`, `FERRAMENTAS_CODIGO`, `MCP_CODIGO_ACESSO`, `FLOW_SECRET_*` e `NOVA_SENHA_ADMIN`. `CONTA_DESLIGADA=1` é restrito a capturas/testes temporários. A tela Configurações e seus endpoints antigos foram desativados; não há agendamento de rotinas neste produto.
+As variáveis atuais estão em `.env.example`. PostgreSQL e `CHAVE_MESTRA` são
+obrigatórios; credenciais de IA e ferramentas pertencem a cada usuário e não
+são herdadas de chaves globais do ambiente. Não existe bypass de autenticação
+para desenvolvimento ou capturas.
 
 ## Recorte em relação ao Flowise
 

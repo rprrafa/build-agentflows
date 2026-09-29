@@ -1,7 +1,6 @@
 // Volta do OpenRouter: troca o código pela chave e grava no banco cifrado.
 import { setConfig } from "@/lib/store";
 import { requestApi } from "@/lib/flow-api";
-import { tenantId } from "@/lib/tenant-context";
 import { consumeIntegrationOAuth } from "@/lib/tenant-oauth";
 async function complete(req: Request) {
   const url = new URL(req.url);
@@ -21,7 +20,7 @@ async function complete(req: Request) {
   if (!code || !verifier)
     return voltar("A conexão com o OpenRouter expirou. Tente de novo.");
   try {
-    if (tenantId()) await consumeIntegrationOAuth("openrouter", url.searchParams.get("state"), verifier);
+    await consumeIntegrationOAuth("openrouter", url.searchParams.get("state"), verifier);
     const r = await fetch("https://openrouter.ai/api/v1/auth/keys", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

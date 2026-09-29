@@ -7,7 +7,6 @@ import {
   updateKnowledgeBase,
 } from "@/lib/knowledge-service";
 import { deleteKnowledgeBase, knowledgeStorageLocation, cleanupPending } from "@/lib/knowledge-index-service";
-import { tenantId } from "@/lib/tenant-context";
 import { listKnowledgeJobs } from "@/lib/saas-jobs";
 type Context = { params: Promise<{ id: string }> };
 export const dynamic = "force-dynamic";
@@ -18,7 +17,7 @@ export async function GET(req: Request, context: Context) {
     const pending = await cleanupPending(id);
     return {
       base,
-      jobs: tenantId() ? await listKnowledgeJobs(id) : [],
+      jobs: await listKnowledgeJobs(id),
       storage: await knowledgeStorageLocation(id),
       sources: await listKnowledgeSources(id),
       runs: await listKnowledgeRuns(id),

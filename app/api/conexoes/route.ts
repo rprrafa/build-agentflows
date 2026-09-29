@@ -1,9 +1,9 @@
 import { salvarCampos, statusConexoes } from "@/lib/conexoes";
-import { baseUrl } from "@/lib/setup-comum";
+import { appOrigin } from "@/lib/saas-security";
 import { requestApi, body } from "@/lib/flow-api";
 export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
-  return requestApi(req, () => statusConexoes(baseUrl(req)));
+  return requestApi(req, () => statusConexoes(appOrigin()));
 }
 export async function PUT(req: Request) {
   return requestApi(req, async () => {
@@ -16,11 +16,11 @@ export async function PUT(req: Request) {
       const { configurarAvisos } = await import("@/lib/whatsapp");
       const { whatsappConfigurado } = await import("@/lib/conexoes");
       if (whatsappConfigurado())
-        aviso = await configurarAvisos(baseUrl(req)).then(
+        aviso = await configurarAvisos(appOrigin()).then(
           (endereco) => (endereco ? "Endereço de avisos cadastrado no provedor." : null),
           (err: Error) => `Credenciais salvas, mas o provedor não aceitou o endereço de avisos: ${err.message}`,
         );
     }
-    return { ...(await statusConexoes(baseUrl(req))), aviso };
+    return { ...(await statusConexoes(appOrigin())), aviso };
   });
 }

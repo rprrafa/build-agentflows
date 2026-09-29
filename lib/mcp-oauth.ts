@@ -2,9 +2,8 @@
 // para a pessoa clicar em "Autorizar" em vez de colar código manualmente. Descobre os endpoints do
 // provedor (bem conhecidos, com fallback), faz registro dinâmico de cliente quando o provedor
 // oferece, e guarda o resultado com o mesmo prefixo de chave já usado pelo campo manual da
-// integração (ex.: MCP_TAREFAS). Compartilhado: nasce aqui e é copiado sem alterar para os outros
-// 9 apps; quem usa é lib/setup-comum.ts (integracaoMCP()) e as rotas em
-// app/api/setup/oauth/mcp/[prefixo].
+// integração (ex.: MCP_TAREFAS). Usado por app/api/conexoes/mcp/[prefixo]
+// dentro do contexto autenticado do proprietário.
 import { createHash, randomBytes } from "node:crypto";
 import { getConfig, setConfig } from "./store";
 

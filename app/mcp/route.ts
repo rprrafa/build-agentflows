@@ -5,7 +5,7 @@ export async function POST(req: Request) {
   const codigo = extrairCodigo(req);
   if (!autenticar(codigo)) {
     return Response.json(
-      { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Acesso ausente ou inválido. Gere um código de acesso em /setup." } },
+      { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Acesso ausente ou inválido. Gere um código de acesso em Implantar fluxo." } },
       { status: 401 }
     );
   }

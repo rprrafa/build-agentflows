@@ -1,6 +1,5 @@
 import { requestApi } from "@/lib/flow-api";
 import { knowledgeSourceBody } from "@/lib/knowledge-api";
-import { tenantId } from "@/lib/tenant-context";
 import { enqueueKnowledge } from "@/lib/saas-jobs";
 import { notifyJob } from "@/lib/saas-queue";
 import {
@@ -9,7 +8,6 @@ import {
   saveKnowledgeSource,
 } from "@/lib/knowledge-service";
 import {
-  processKnowledgeSource,
   removeKnowledgeSource,
 } from "@/lib/knowledge-index-service";
 type Context = { params: Promise<{ id: string; sourceId: string }> };
@@ -42,11 +40,8 @@ export async function PUT(req: Request, context: Context) {
 export async function POST(req: Request, context: Context) {
   return requestApi(req, async () => {
     const { id, sourceId } = await context.params;
-    if (tenantId()) {
-      const job = await enqueueKnowledge("extract", id, sourceId); await notifyJob(job.id);
-      return Response.json({ queued: true, jobId: job.id }, { status: 202 });
-    }
-    return processKnowledgeSource(id, sourceId);
+    const job = await enqueueKnowledge("extract", id, sourceId); await notifyJob(job.id);
+    return Response.json({ queued: true, jobId: job.id }, { status: 202 });
   });
 }
 export async function DELETE(req: Request, context: Context) {

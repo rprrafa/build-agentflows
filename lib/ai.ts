@@ -29,7 +29,7 @@ export type CodigoErroIA =
   | "resposta_vazia"
   | "resposta_invalida";
 
-/** Erro da camada de IA com o suficiente para a tela explicar o que houve e oferecer uma ação (ver components/ui.tsx: ErrorBox). */
+/** Erro da camada de IA com o suficiente para a tela explicar o que houve e oferecer uma ação . */
 export class ErroIA extends Error {
   codigo: CodigoErroIA;
   status: number;
@@ -44,8 +44,8 @@ export class ErroIA extends Error {
   }
 }
 
-const ACAO_CONECTAR_IA = { rotulo: "Conectar a IA", url: "/setup#openrouter" };
-const ACAO_TROCAR_MODELO = { rotulo: "Trocar o modelo", url: "/setup#openrouter" };
+const ACAO_CONECTAR_IA = { rotulo: "Conectar a IA", url: "/configuracoes" };
+const ACAO_TROCAR_MODELO = { rotulo: "Trocar o modelo", url: "/configuracoes" };
 const ACAO_ADICIONAR_CREDITOS = { rotulo: "Adicionar créditos", url: "https://openrouter.ai/settings/credits" };
 
 /** Único ponto que traduz uma resposta HTTP não-ok do OpenRouter (ou uma falha de rede) em ErroIA. O detalhe técnico do provedor nunca chega à tela: só ao console.error. Exportada só para o caso de demonstração local (?erro=<código> em dev) montar o mesmo ErroIA que uma falha real geraria. */
@@ -150,7 +150,7 @@ export function visionModelName(): string {
   return escolhido("OPENROUTER_MODEL_VISAO") || MODELOS_VISAO[0].valor;
 }
 
-// Informações de proveniência exibidas pelo componente Origem (components/ui.tsx).
+// Informações de proveniência exibidas pelo componente Origem.
 export type Meta = { demo: boolean; model: string; geradoEm: string; insumo: string };
 
 /** `model` só é informado quando a chamada usou um modelo diferente do padrão (ex.: a tarefa de

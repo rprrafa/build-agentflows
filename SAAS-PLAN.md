@@ -50,6 +50,21 @@ credenciais nem dados reais e não confirma integrações externas.
 Validação desta etapa: **266 testes gerais e 55 testes no PostgreSQL servidor**;
 lint sem erros (permanece o aviso anterior de `<img>` no chat).
 
+Removidos módulos herdados sem consumidores no Agentflows: formulários públicos
+(nenhum criador/callback registrado), rotinas (catálogo e executores vazios) e
+histórico genérico `resultados` (a tela atual usa `runs`). As rotas e exceções
+públicas correspondentes foram excluídas. Não criar tabelas novas para conservar
+essas estruturas antigas. O inventário histórico abaixo deve ser lido com essa
+correção de escopo; a jornada real de execuções continua por tenant.
+Também removidos a interface genérica sem importadores, o catálogo vazio de
+integrações, helpers exclusivos dessas telas e endpoints de setup que apenas
+retornavam 410. As conexões atuais usam `APP_URL` validado diretamente e não
+inferem a origem por cabeçalhos. Nas APIs privadas, tenant e estado OAuth são
+obrigatórios; extração e indexação sempre entram na fila.
+Validação da remoção: **267 testes gerais e 56 no PostgreSQL servidor**, build
+concluído e lint sem erros. Teste HTTP OAuth cobre origem forjada, estado ausente,
+estado de outra conta, armazenamento privado e tentativa de repetição.
+
 ## Histórico e inventário técnico (em revisão após a mudança de direção)
 
 O objetivo permanece integral: autenticação por senha/Google, Resend, beta fechado,
@@ -282,9 +297,7 @@ repositórios, incluindo Server Components e workers; o proxy sozinho não basta
 | Memória, conversationRunIds, execução de subfluxos | Validar cada referência no contexto da sessão/job; proibir uso de execuções de outra conta. |
 | Anexos e arquivos de ferramentas | Anexos SaaS transacionais no PostgreSQL; arquivos de ferramentas em diretórios privados, com validação de caminho. |
 | FAISS e bancos vetoriais/record managers externos | Namespaces por usuário/base/geração; verificar conexão/credencial do dono; limpeza nunca alcança outra conta. |
-| `resultados`, impressão, histórico | Filtrar também páginas Server Components, exportações e operações de apagar todos. |
-| `formularios`, `respostas` | Dono na criação; token público resolve um recurso específico e seu dono após validação. |
-| `rotinas` | Dono persistido no agendamento; worker resolve credenciais e execução desse dono. |
+| Impressão e histórico de execuções | Páginas e APIs usam `runs` por usuário. O histórico genérico `resultados` foi removido. |
 | Embed settings/sessions/commands/requests/jobs | Ticket, origem, fluxo e dono vinculados; polling, anexos e retomadas não cruzam contas. |
 | Webhooks WhatsApp/ElevenLabs/flows e MCP | Endereço/token por usuário ou instalação; resolver dono antes de ler configurações, validar segredo e aplicar limites. |
 | ChatGPT/Codex e caches MCP/modelos | Remover singletons globais de conta/conexão; diretórios e caches por usuário, credencial e serviço. |
@@ -302,7 +315,7 @@ devem impedir referências cruzadas mesmo quando um caller passar um ID errado.
    propagação de cancelamento já estão implementados. Auditar também
    acesso de conexões configuráveis à rede interna da instalação (HTTP e drivers
    SQL) e capacidade acumulada de vetores antes do beta.
-2. Aplicar o contexto a histórico, formulários, rotinas, embed, webhooks, MCP e
+2. Concluir a auditoria do contexto de execuções, embed, webhooks, MCP e
    todas as Server Components/APIs do inventário acima. Testar usuários A/B com
    tentativas de acesso cruzado por IDs, arquivos e tokens públicos. Cifrar também
    a sessão ChatGPT persistida; diretórios privados sozinhos não substituem cifragem.

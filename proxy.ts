@@ -12,28 +12,19 @@ function rotaPublica(pathname: string, metodo: string): boolean {
   if (pathname === "/api/embed/token" || pathname === "/api/embed/session" || pathname === "/api/embed/attachments" || /^\/api\/embed\/attachments\/[a-zA-Z0-9-]+$/.test(pathname)) return true;
   if (pathname === "/mcp") return metodo === "POST";
   if (pathname === "/api/health") return true;
-  if (pathname === "/api/rotinas/executar") return true;
-  if (pathname === "/setup/trello") return true;
   if (pathname === "/conta" || pathname === "/entrar") return true;
   if (pathname === "/icon.svg") return true;
-  if (pathname.startsWith("/f/") || pathname.startsWith("/api/f/")) return true;
-  if (pathname.startsWith("/s/")) return true;
-  if (pathname.startsWith("/api/videos/imagem/")) return true;
-  if (pathname === "/webhook" || pathname.startsWith("/webhook/")) return true;
-  if (pathname.startsWith("/simular/") || pathname.startsWith("/api/salas/")) return true;
-  if (pathname.startsWith("/entrevista/") || pathname.startsWith("/api/entrevista/candidato/")) return true;
+  if (pathname === "/webhook/whatsapp" || pathname === "/webhook/elevenlabs" || /^\/webhook\/flows\/[a-zA-Z0-9-]+$/.test(pathname)) return true;
   if (pathname.startsWith("/_next/")) return true;
-  if (/^\/api\/setup\/oauth\/[^/]+\/callback$/.test(pathname)) return true;
   return false;
 }
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const semCache = pathname.startsWith("/f/") || pathname.startsWith("/api/f/");
 
   function permitir() {
     const response = NextResponse.next();
-    if (semCache || pathname.startsWith("/embed/") || pathname.startsWith("/api/embed/")) response.headers.set("Cache-Control", "no-store");
+    if (pathname.startsWith("/embed/") || pathname.startsWith("/api/embed/")) response.headers.set("Cache-Control", "no-store");
     if (/^\/embed\/[a-zA-Z0-9-]+$/.test(pathname)) {
       try { const s = embedSettings(pathname.split("/")[2]); s.origins = effectiveEmbedOrigins(s.origins); response.headers.set("Content-Security-Policy", "frame-ancestors " + (s.enabled && s.origins.length ? s.origins.join(" ") : "'none'") + ";"); }
       catch { response.headers.set("Content-Security-Policy", "frame-ancestors 'none';"); }
