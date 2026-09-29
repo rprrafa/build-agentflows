@@ -1,13 +1,11 @@
-import test from "node:test";
+import nodeTest from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-const dir = mkdtempSync(join(tmpdir(), "agentflows-conexoes-"));
-process.env.DATA_DIR = dir;
+import { createTenantTestContext } from "../scripts/tenant-test-context";
+const tenant = await createTenantTestContext();
+function test(name: string, action: () => void | Promise<void>) { nodeTest(name, () => tenant.asTenant(action)); }
 const { getConfig, setConfig } = await import("./store");
 const c = await import("./conexoes");
-test.after(() => rmSync(dir, { recursive: true, force: true }));
+nodeTest.after(tenant.close);
 test("salvar campos aceita só chaves conhecidas e preserva segredos mascarados", () => {
   c.salvarCampos({ WHATSAPP_PROVEDOR: "zapi", ZAPI_TOKEN: "segredo-123456" }, { provedor: "zapi", versao: "2026-09-20" });
   assert.equal(getConfig("ZAPI_TOKEN"), "segredo-123456");

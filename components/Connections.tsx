@@ -6,6 +6,7 @@ import { EmbedSecurity } from "./EmbedSecurity";
 import { ChatGPTUsage } from "./ChatGPTUsage";
 import { WhatsAppTerms } from "./WhatsAppTerms";
 import { ChatGPTConnection, useChatGPT } from "./ChatGPTConnection";
+import { MEDIA_PROVIDERS, type MediaProvider } from "@/lib/media-models";
 
 type CampoStatus = {
   chave: string;
@@ -20,6 +21,7 @@ type CampoStatus = {
   valor?: string;
 };
 type Status = {
+  media: { id: MediaProvider; conectado: boolean; mascarado: string | null }[];
   openrouter: { conectado: boolean; mascarado: string | null };
   mcp: { prefixo: string; nome: string; url: string; autorizado: boolean }[];
   whatsapp: {
@@ -47,6 +49,7 @@ function Card({
   badge,
   connected,
   description,
+  configuredOnly = false,
   collapsible = false,
   children,
 }: {
@@ -55,6 +58,7 @@ function Card({
   badge?: string;
   connected: boolean;
   description: string;
+  configuredOnly?: boolean;
   collapsible?: boolean;
   children: ReactNode;
 }) {
@@ -72,7 +76,7 @@ function Card({
         </div>
         <span className={"connection-state " + (connected ? "on" : "")}>
           <i />
-          {connected ? "Conectado" : "Não conectado"}
+          {configuredOnly ? (connected ? "Chave salva" : "Sem chave") : (connected ? "Conectado" : "Não conectado")}
         </span>
         {collapsible && <button className="studio-button connection-toggle" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? "Recolher" : connected ? "Gerenciar" : "Configurar"}<Icon name="chevron" size={14} /></button>}
       </header>
@@ -258,7 +262,7 @@ export function Connections() {
             {status?.openrouter.conectado ? (
               <>
                 <p>
-                  Chave <code>{status.openrouter.mascarado}</code> guardada nesta instalação.
+                  Chave <code>{status.openrouter.mascarado}</code> guardada na sua conta.
                 </p>
                 <div className="studio-actions">
                   <button
@@ -298,6 +302,22 @@ export function Connections() {
           </Card>
         </div>
 
+        <div className="settings-section-heading"><Icon name="link" size={18} /><div><h2>Geração de imagens</h2><p>Chaves cifradas e exclusivas da sua conta. Escolha o modelo em um bloco Agente ou LLM.</p></div></div>
+        <div className="settings-channels">
+          {MEDIA_PROVIDERS.map((provider) => {
+            const saved = status?.media.find((item) => item.id === provider.id);
+            return <Card key={provider.id} icon={<Icon name="link" size={22} />} title={provider.name} configuredOnly connected={!!saved?.conectado}
+              description={provider.id === "replicate" ? "Nano Banana: gere imagens ou edite os anexos da conversa." : provider.id === "higgsfield" ? "Soul 2: gere imagens a partir de texto." : "Nano Banana 2: gere imagens a partir de texto."}>
+              <div className="node-fields">{fields([{ chave: provider.key, rotulo: `Chave de ${provider.name}`, tipo: "secret", definido: !!saved?.conectado, mascarado: saved?.mascarado || null,
+                ajuda: provider.id === "higgsfield" ? "Cole a credencial completa da API, incluindo ID:segredo quando fornecido." : "Cole a chave criada no painel do provedor." }])}</div>
+              <p>Salvar não gera imagens nem valida o saldo. As gerações são cobradas na sua conta do provedor.</p>
+              <div className="studio-actions">
+                <button className="studio-button primary" disabled={!!busy || !drafts[provider.key]?.trim()} onClick={() => save([provider.key])}>Salvar chave</button>
+                {saved?.conectado && <button className="studio-button subtle danger" disabled={!!busy} onClick={() => save([], { [provider.key]: null })}>Remover chave</button>}
+              </div>
+            </Card>;
+          })}
+        </div>
         <div className="settings-section-heading"><Icon name="chat" size={18} /><div><h2>Canais e voz</h2><p>Configure uma vez e vincule ao fluxo em Implantar.</p></div></div>
         <div className="settings-channels">
           <Card

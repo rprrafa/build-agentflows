@@ -140,7 +140,7 @@ export function FlowEditor({ id }: { id: string }) {
   }, []);
   useEffect(() => {
     const refresh = () => {
-      void request<{ openrouter: { conectado: boolean } }>("/api/conexoes").then((s) => setOpenrouterConnected(s.openrouter.conectado)).catch(() => {});
+      void request<{ openrouter: { conectado: boolean }; media: { conectado: boolean }[] }>("/api/conexoes").then((s) => setOpenrouterConnected(s.openrouter.conectado || s.media.some((provider) => provider.conectado))).catch(() => {});
     };
     refresh();
     window.addEventListener("focus", refresh);

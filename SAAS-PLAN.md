@@ -67,6 +67,13 @@ estado de outra conta, armazenamento privado e tentativa de repetição.
 
 ## Histórico e inventário técnico (em revisão após a mudança de direção)
 
+Etapa de imagens validada com **280 testes gerais e 57 no PostgreSQL servidor**,
+build e lint sem erros (aviso preexistente no EmbedChat). A imagem Docker foi
+reconstruída e o teste Compose passou com API autenticada, credenciais/anexos
+privados, duas instâncias do worker, cota por usuário e recriação preservando
+volumes. Testes de APIs pagas usam respostas controladas. A remoção restante do
+legado e a migração das integrações públicas continuam pendentes.
+
 O objetivo permanece integral: autenticação por senha/Google, Resend, beta fechado,
 isolamento de **todo** contexto por usuário, credenciais cifradas, modelos
 multimodais/geração de imagem (Replicate, Higgsfield, MuAPI), PostgreSQL, limites,
@@ -319,9 +326,13 @@ devem impedir referências cruzadas mesmo quando um caller passar um ID errado.
    todas as Server Components/APIs do inventário acima. Testar usuários A/B com
    tentativas de acesso cruzado por IDs, arquivos e tokens públicos. Cifrar também
    a sessão ChatGPT persistida; diretórios privados sozinhos não substituem cifragem.
-3. Verificar documentação oficial de Replicate, Higgsfield e MuAPI; conectar
-   credenciais no Agente/LLM, parâmetros/modelos, entradas multimodais e saída
-   persistente de imagens. Testar polling, falhas, cancelamento e tempo limite.
+3. Catálogo inicial de Replicate, Higgsfield e MuAPI integrado ao Agente/LLM,
+   com chaves cifradas por usuário, submissão única, polling, cancelamento local
+   e tentativa remota quando documentada. Nano Banana da Replicate aceita imagens;
+   Soul 2 e Nano Banana 2 recebem texto nesta integração. Resultados são anexos
+   privados e o identificador externo fica no histórico. Contratos e limites em
+   [MEDIA-PROVIDERS.md](MEDIA-PROVIDERS.md). Suítes com respostas controladas;
+   geração real em contas pagas ainda não foi validada.
 4. Redis/worker implementados para jobs privados e outbox. Validar recuperação
    real entre processos, idempotência dos provedores e shutdown na imagem final.
    Não repetir automaticamente efeitos externos cujo resultado seja incerto.

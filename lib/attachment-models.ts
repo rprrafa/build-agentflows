@@ -3,11 +3,12 @@ import { listModels } from "./openrouter";
 import { imageIssues, reachableAiNodes, type ModelCapability } from "./model-capabilities";
 import type { Graph } from "./flow-types";
 import { FlowError } from "./flow-store";
+import { isMediaModel, MEDIA_MODELS } from "./media-models";
 export async function assertImageModels(graph: Graph) {
   const nodes = reachableAiNodes(graph);
-  const models: ModelCapability[] = [];
+  const models: ModelCapability[] = [...MEDIA_MODELS];
   try {
-    if (nodes.some((n) => !n.data.config.model?.startsWith("openrouter:"))) models.push(...await chatGPT().models());
+    if (nodes.some((n) => !n.data.config.model?.startsWith("openrouter:") && !isMediaModel(n.data.config.model))) models.push(...await chatGPT().models());
     if (nodes.some((n) => n.data.config.model?.startsWith("openrouter:"))) models.push(...(await listModels()).map((m) => ({ id: `openrouter:${m.id}`, name: m.nome, inputModalities: m.inputModalities })));
   } catch { throw new FlowError("Não foi possível verificar os modelos para imagens. Atualize as configurações e tente novamente."); }
   const issues = imageIssues(graph, models);

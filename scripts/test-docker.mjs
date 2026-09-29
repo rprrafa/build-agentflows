@@ -34,9 +34,9 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { saasDatabase } from './lib/saas-db.ts';
 const db = saasDatabase();
-async function request(token, pathname, data) {
+async function request(token, pathname, data, method) {
   const response = await fetch('http://127.0.0.1:10000' + pathname, {
-    method: data ? 'POST' : 'GET',
+    method: method || (data ? 'POST' : 'GET'),
     headers: { cookie: 'agentflows_session=' + token, origin: process.env.APP_URL, 'content-type': 'application/json' },
     body: data ? JSON.stringify(data) : undefined,
   });
@@ -71,6 +71,17 @@ try {
     assert.equal(flow.status, 200);
     assert.equal((await request(tokenB, '/api/flows/' + flow.body.id)).status, 404);
     assert.equal((await request('', '/api/flows')).status, 401);
+    const configured = await request(tokenA, '/api/conexoes', { campos: { REPLICATE_API_TOKEN: 'container-private-replicate-token' } }, 'PUT');
+    assert.equal(configured.status, 200);
+    assert.ok(!JSON.stringify(configured.body).includes('container-private-replicate-token'));
+    assert.equal((await request(tokenA, '/api/conexoes/media')).body.providers.find(item => item.id === 'replicate').conectado, true);
+    assert.equal((await request(tokenB, '/api/conexoes/media')).body.providers.some(item => item.conectado), false);
+    const { default: sharp } = await import('sharp');
+    const { withTenantJob } = await import('./lib/tenant-context.ts');
+    const { saveAttachment } = await import('./lib/attachment-service.ts');
+    const png = await sharp({ create: { width: 2, height: 2, channels: 3, background: 'red' } }).png().toBuffer();
+    const image = await withTenantJob(db, a, () => saveAttachment(flow.body.id, new File([png], 'generated.png'), true));
+    assert.equal((await request(tokenB, '/api/attachments/' + image.id)).status, 404);
     const runs = [];
     for (let i=0; i<10; i++) {
       const run = await request(tokenA, '/api/flows/' + flow.body.id + '/run', { input: 'Test ' + i, demo: true });
@@ -78,7 +89,7 @@ try {
     }
     assert.equal((await request(tokenA, '/api/flows/' + flow.body.id + '/run', { input: 'Over quota', demo: true })).status, 429);
     assert.equal((await request(tokenB, '/api/runs/' + runs[0])).status, 404);
-    await writeFile('/app/data/docker-test.json', JSON.stringify({ a, b, tokenA, tokenB, runs, flowId: flow.body.id, encrypted: seal('persisted-secret', 'docker-test') }), { mode: 0o600 });
+    await writeFile('/app/data/docker-test.json', JSON.stringify({ a, b, tokenA, tokenB, runs, flowId: flow.body.id, imageId: image.id, png: png.toString('base64'), encrypted: seal('persisted-secret', 'docker-test') }), { mode: 0o600 });
     await db.close();
   `);
   console.log("Docker: checking two workers against the same queue...");
@@ -107,6 +118,13 @@ try {
     assert.equal(unseal(fixture.encrypted, 'docker-test'), 'persisted-secret');
     assert.equal((await request(fixture.tokenA, '/api/flows/' + fixture.flowId)).status, 200);
     assert.equal((await request(fixture.tokenB, '/api/flows/' + fixture.flowId)).status, 404);
+    assert.equal((await request(fixture.tokenA, '/api/conexoes/media')).body.providers.find(item => item.id === 'replicate').conectado, true);
+    assert.equal((await request(fixture.tokenB, '/api/conexoes/media')).body.providers.some(item => item.conectado), false);
+    const image = await fetch('http://127.0.0.1:10000/api/attachments/' + fixture.imageId, { headers: { cookie: 'agentflows_session=' + fixture.tokenA } });
+    assert.equal(image.status, 200);
+    assert.equal(image.headers.get('cache-control'), 'private, no-store');
+    assert.equal(Buffer.from(await image.arrayBuffer()).toString('base64'), fixture.png);
+    assert.equal((await request(fixture.tokenB, '/api/attachments/' + fixture.imageId)).status, 404);
     for (const id of fixture.runs) assert.equal((await request(fixture.tokenA, '/api/runs/' + id)).body.status, 'completed');
     assert.equal((await db.query("SELECT count(*)::int count FROM jobs WHERE status='done'")).rows[0].count, 10);
     await db.close();
@@ -114,7 +132,7 @@ try {
   const status = (await compose("ps", "--format", "json")).trim().split("\n").map((line) => JSON.parse(line));
   assert.equal(status.length, 4);
   assert.ok(status.every((service) => service.Health === "healthy"));
-  console.log("Docker passed: authenticated API, isolation, queue capacity, two workers, restart and volumes.");
+  console.log("Docker passed: authenticated API, private media credentials/images, isolation, queue capacity, two workers, restart and volumes.");
 } finally {
   try { await compose("down", "--volumes", "--remove-orphans"); }
   finally { await rm(dir, { recursive: true, force: true }); }

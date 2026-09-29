@@ -90,6 +90,7 @@ export type Flow = {
   updatedAt: string;
 };
 export type Trace = {
+  images?: Attachment[];
   knowledge?: { chunks?: KnowledgeReference[]; baseId?: string; count: number; references: boolean; available?: { baseId: string; baseName: string; description: string }[]; bases?: { baseId: string; baseName: string; count: number; references: boolean }[] };
   type?: "step" | "tool";
   status?: "running" | "completed" | "failed";
@@ -119,6 +120,7 @@ export type Run = {
   recoveryAttempts?: number;
   input: string;
   attachments?: Attachment[];
+  mediaRequests?: (import("./media-provider").MediaRequest & { nodeId: string; at: string })[];
   conversation?: { input: string; output: string }[];
   output: string;
   error?: string;

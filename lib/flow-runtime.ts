@@ -7,6 +7,9 @@ import { cancelCommands, getSession } from "./embed-store";
 import { attachmentContext, resolveAttachments, markAttachmentsUsed } from "./attachment-service";
 import { assertImageModels } from "./attachment-models";
 import { reachableAiNodes } from "./model-capabilities";
+import { isMediaModel, mediaModel } from "./media-models";
+import { mediaKey } from "./media-credentials";
+import { runMedia } from "./media-runtime";
 import { tenantConversationHistory } from "./conversation";
 import { memoryPrompt } from "./flow-memory";
 import { randomUUID } from "node:crypto";
@@ -45,6 +48,7 @@ export function message(c: Record<string, string>, r: Run) {
 }
 async function agent(n: Block, r: Run, signal: AbortSignal, details: Partial<Trace>) {
   const c = n.data.config;
+  if (isMediaModel(c.model)) return runMedia(n, r, message(c, r), interpolate(c.system, r), signal, details);
   const allowed =
     n.data.kind === "agent"
       ? (c.tools || "")
@@ -387,11 +391,16 @@ export async function buildRun(
   if (attachments.length && !reachableAiNodes(graph).length) throw new FlowError("Adicione um bloco de IA ao fluxo para analisar os anexos.");
   if (demo === true && attachments.length) throw new FlowError("Anexos precisam de uma execução real. Desative a simulação ou remova os arquivos.");
   if (attachments.some((a) => a.kind === "image")) await assertImageModels(graph);
-  if (demo !== true && !openRouterKey() && !(await chatGPT().account()).account)
-    throw new FlowError(
-      "Conecte o ChatGPT (ou o OpenRouter em Configurações) para executar.",
-      409,
-    );
+  if (demo !== true) {
+    const nodes = reachableAiNodes(graph);
+    for (const node of nodes) {
+      const selected = mediaModel(node.data.config.model);
+      if (selected) mediaKey(selected.provider);
+      else if (isOpenRouterModel(node.data.config.model) && !openRouterKey()) throw new FlowError("Conecte o OpenRouter em Configurações para executar este fluxo.", 409);
+    }
+    if (nodes.some((node) => !isMediaModel(node.data.config.model) && !isOpenRouterModel(node.data.config.model)) && !(await chatGPT().account()).account)
+      throw new FlowError("Conecte o ChatGPT para executar os blocos que usam sua assinatura.", 409);
+  }
   const now = new Date().toISOString();
   const r: Run = {
     id: randomUUID(),

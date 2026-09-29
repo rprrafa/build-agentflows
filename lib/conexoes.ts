@@ -7,6 +7,8 @@ import { tenantId } from "./tenant-context";
 import { conexaoAutorizada, desconectar as desautorizar } from "./mcp-oauth";
 import { FlowError } from "./flow-store";
 import { TOOL_CREDENTIAL_KEYS } from "./tool-credentials";
+import { MEDIA_PROVIDERS } from "./media-models";
+import { mediaCredentials } from "./media-credentials";
 export type Campo = {
   chave: string;
   rotulo: string;
@@ -49,6 +51,7 @@ const CHAVES_LIVRES = new Set([
   "WHATSAPP_FLOW_ID",
   "ELEVENLABS_FLOW_ID",
   "OPENROUTER_API_KEY",
+  ...MEDIA_PROVIDERS.map((provider) => provider.key),
   ...TOOL_CREDENTIAL_KEYS,
 ]);
 // Grava um conjunto de campos; só chaves conhecidas, só texto curto.
@@ -60,6 +63,8 @@ export function salvarCampos(campos: unknown, aceiteWhatsApp?: unknown) {
     if (!CHAVES_LIVRES.has(chave)) throw new FlowError(`Campo desconhecido: ${chave}.`);
     if (valor !== null && (typeof valor !== "string" || valor.length > 4000))
       throw new FlowError(`Valor inválido em ${chave}.`);
+    if (MEDIA_PROVIDERS.some((provider) => provider.key === chave) && typeof valor === "string" && (!valor.trim() || /[\r\n]/.test(valor)))
+      throw new FlowError("Cole uma chave de imagem válida, sem quebras de linha.");
   }
   const values = campos as Record<string, string | null>;
   const provider = (!tenantId() && process.env.WHATSAPP_PROVEDOR) || ("WHATSAPP_PROVEDOR" in values ? values.WHATSAPP_PROVEDOR : provedorWhatsApp());
@@ -72,7 +77,7 @@ export function salvarCampos(campos: unknown, aceiteWhatsApp?: unknown) {
   configTransaction(() => {
     for (const [key, value] of entries) {
       if (typeof value === "string" && /^•+$|^.{4}••••.{4}$/.test(value)) continue;
-      setConfig(key, value as string | null);
+      setConfig(key, typeof value === "string" && MEDIA_PROVIDERS.some((provider) => provider.key === key) ? value.trim() : value as string | null);
     }
     if (newAcceptance) setConfig("WHATSAPP_ACEITE", JSON.stringify({ provedor: provider, versao: "2026-09-20", data: new Date().toISOString() }));
   });
@@ -195,6 +200,7 @@ export async function statusConexoes(origem: string) {
     })),
   );
   return {
+    media: mediaCredentials(),
     openrouter: {
       conectado: !!getConfig("OPENROUTER_API_KEY"),
       mascarado: mascarar(getConfig("OPENROUTER_API_KEY")),

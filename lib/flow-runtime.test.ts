@@ -169,9 +169,7 @@ test("OpenRouter só vale para blocos que escolhem um modelo dele; sem fallback"
     );
     setConfig("OPENROUTER_API_KEY", "sk-or-teste");
     // Bloco em "Automático · ChatGPT" continua exigindo o ChatGPT: nada de cair para outro provedor.
-    const r = await runtime.startRun(f.id, "Olá");
-    assert.equal(r.status, "failed");
-    assert.match(r.error || "", /ChatGPT/);
+    await assert.rejects(() => runtime.startRun(f.id, "Olá"), /Conecte o ChatGPT/);
     // Bloco com modelo do OpenRouter roda por ele.
     const g = template();
     g.nodes[1].data.config.model = "openrouter:openai/gpt-4.1-mini";

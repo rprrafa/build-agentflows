@@ -1,5 +1,6 @@
 import { conditionCriteria, COMPARISONS } from "./flow-conditions";
 import { memorySettings } from "./memory-settings";
+import { validateMediaConfig } from "./media-models";
 import { knowledgeSettings } from "./knowledge-settings";
 import { validateToolCards } from "./agent-tools";
 import { outputs } from "./flow-graph";
@@ -72,6 +73,7 @@ export function validateGraph(value: unknown, executable = false): Graph {
     }
     if (n.data.kind === "agent" || n.data.kind === "llm") {
       try { memorySettings(n.data.config); } catch (error) { throw new FlowError((error as Error).message); }
+      try { validateMediaConfig(n.data.config); } catch (error) { throw new FlowError((error as Error).message); }
       try { knowledgeSettings(n.data.config); } catch (error) { throw new FlowError((error as Error).message); }
     }
     if (n.data.kind === "agent") {

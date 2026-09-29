@@ -4,6 +4,7 @@ import { MAX_ATTACHMENTS, MAX_TOTAL_BYTES, type Attachment } from "./attachment-
 import { currentTenant, tenantId } from "./tenant-context";
 import { getTenantFlow } from "./tenant-flows";
 import { FlowError } from "./flow-store";
+import { assertJobLease } from "./saas-job-context";
 
 export { uploadForm } from "./attachments";
 const missing = () => new FlowError("Anexo não encontrado ou expirado. Remova-o e envie novamente.", 404);
@@ -11,12 +12,13 @@ function validateId(id: string) {
   if (!/^[0-9a-f-]{36}$/.test(id)) throw missing();
 }
 
-export async function saveAttachment(flowId: string, file: File): Promise<Attachment> {
+export async function saveAttachment(flowId: string, file: File, used = false): Promise<Attachment> {
   if (!tenantId()) return legacy.saveAttachment(flowId, file);
   await getTenantFlow(flowId);
   const { attachment, bytes, text } = await legacy.prepareAttachment(file);
   const { db, user } = currentTenant();
   await db.transaction(async (sql) => {
+    await assertJobLease(sql, user.id);
     await sql.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [user.id]);
     // The flow lock coordinates upload with deletion; no dangling bytes survive either operation.
     if (!(await sql.query("SELECT id FROM flows WHERE user_id=$1 AND id=$2 FOR UPDATE", [user.id, flowId])).rows.length)
@@ -25,7 +27,7 @@ export async function saveAttachment(flowId: string, file: File): Promise<Attach
     const { rows } = await sql.query<{ count: number; bytes: number }>("SELECT count(*)::int AS count,coalesce(sum(octet_length(data)),0)::int AS bytes FROM attachment_blobs WHERE user_id=$1", [user.id]);
     if (rows[0].count >= 2000 || rows[0].bytes + bytes.length > 100 * 1024 * 1024)
       throw new FlowError("Sua conta atingiu o limite de 100 MB ou 2.000 anexos. Exclua fluxos antigos para liberar espaço.", 413);
-    await sql.query("INSERT INTO attachments(user_id,id,flow_id,body) VALUES ($1,$2,$3,$4)", [user.id, attachment.id, flowId, JSON.stringify({ ...attachment, flowId, text })]);
+    await sql.query("INSERT INTO attachments(user_id,id,flow_id,body,used) VALUES ($1,$2,$3,$4,$5)", [user.id, attachment.id, flowId, JSON.stringify({ ...attachment, flowId, text }), used]);
     await sql.query("INSERT INTO attachment_blobs(user_id,id,data) VALUES ($1,$2,$3)", [user.id, attachment.id, bytes]);
   });
   return attachment;

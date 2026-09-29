@@ -57,7 +57,7 @@ export function RunView({
         <div>
           <span className="run-provider">
             <Icon name={run.demo ? "play" : "spark"} size={15} />
-            {run.demo ? "Demonstração" : "ChatGPT"} ·{" "}
+            {run.demo ? "Demonstração" : "Execução"} ·{" "}
             {run.version ? "v" + run.version : "rascunho"}
           </span>
           {!compact && <h2>{run.name}</h2>}

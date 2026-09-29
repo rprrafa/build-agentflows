@@ -10,6 +10,7 @@ import { ReferenceField, type Reference } from "./ReferenceField";
 import { ToolPicker } from "./ToolPicker";
 import { ModelPicker } from "./ModelPicker";
 import { memorySettings } from "@/lib/memory-settings";
+import { isMediaModel, validateMediaConfig } from "@/lib/media-models";
 import { MemoryFields } from "./MemoryFields";
 const fields: Record<Kind, string[]> = {
   start: [],
@@ -141,7 +142,7 @@ export function NodeDialog({
       }
     }
     if (k === "agent" || k === "llm") {
-      try { memorySettings(c); } catch (error) {
+      try { memorySettings(c); validateMediaConfig(c); } catch (error) {
         setCloseError((error as Error).message);
         return false;
       }
@@ -287,10 +288,11 @@ export function NodeDialog({
                 connected={connected}
                 onChange={(v) => change(key, v)}
               />
-              {!connected && <small>
+              {!connected && !isMediaModel(c.model) && <small>
                 Conecte o ChatGPT para executar de verdade.{" "}
                 <button type="button" className="node-connect-link" onClick={() => { if (saveAndClose()) onConnect(); }}>Conectar</button>
               </small>}
+              {isMediaModel(c.model) && <small>Use as instruções e a mensagem para descrever a imagem. Remova ferramentas e bases deste bloco; elas podem ser usadas em um bloco de texto anterior. A memória aceita Todas as mensagens ou Últimas mensagens, sem resumo.</small>}
               </>
             ) : key === "operator" || key === "method" ? (
               <select
