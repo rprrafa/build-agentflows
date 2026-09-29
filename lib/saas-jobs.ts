@@ -1,0 +1,125 @@
+import { randomUUID } from "node:crypto";
+import type { Database, Sql } from "./saas-db";
+import { currentTenant } from "./tenant-context";
+import { FlowError } from "./flow-store";
+import { buildRun } from "./flow-runtime";
+import { persistTenantRun } from "./tenant-flows";
+import type { Run } from "./flow-types";
+
+export type Job = { id: string; user_id: string; kind: "run" | "index" | "extract"; resource_id: string; run_id: string | null; base_id: string | null; source_id: string | null; status: string; lease_token: string | null; error: string | null };
+const queueLock = (sql: Sql) => sql.query("SELECT pg_advisory_xact_lock(742193802)");
+async function capacity(sql: Sql, owner: string) {
+  await queueLock(sql);
+  const user = await sql.query("SELECT id FROM users WHERE id=$1 AND beta_status='approved' AND email_verified_at IS NOT NULL FOR UPDATE", [owner]);
+  if (!user.rows.length) throw new FlowError("Acesso ao beta pendente ou suspenso.", 403);
+  const { rows } = await sql.query<{ own: number; total: number }>("SELECT count(*) FILTER(WHERE user_id=$1)::int own,count(*)::int total FROM jobs WHERE status IN ('queued','running')", [owner]);
+  if (rows[0].own >= 10 || rows[0].total >= 1000) throw new FlowError("A fila atingiu o limite. Aguarde as tarefas em andamento.", 429);
+}
+async function insertJob(sql: Sql, job: Pick<Job, "user_id" | "kind" | "resource_id" | "run_id" | "base_id" | "source_id">) {
+  const id = randomUUID();
+  const { rows } = await sql.query<Job>(`INSERT INTO jobs(id,user_id,kind,resource_id,run_id,base_id,source_id)
+    VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING RETURNING *`, [id, job.user_id, job.kind, job.resource_id, job.run_id, job.base_id, job.source_id]);
+  if (!rows[0]) throw new FlowError("Este recurso já tem uma tarefa na fila.", 409);
+  return rows[0];
+}
+export async function enqueueRun(...args: Parameters<typeof buildRun>) {
+  const run = await buildRun(...args), { db, user } = currentTenant();
+  run.queued = true;
+  const job = await db.transaction(async (sql) => {
+    await capacity(sql, user.id);
+    await persistTenantRun(sql, user.id, run);
+    for (const item of run.attachments || []) await sql.query("UPDATE attachments SET used=true WHERE user_id=$1 AND id=$2", [user.id, item.id]);
+    return insertJob(sql, { user_id: user.id, kind: "run", resource_id: run.id, run_id: run.id, base_id: null, source_id: null });
+  });
+  return { run, job };
+}
+export async function enqueueResume(id: string, decision: unknown) {
+  if (!["yes", "no"].includes(String(decision))) throw new FlowError("Escolha aprovar ou rejeitar.");
+  const { db, user } = currentTenant();
+  return db.transaction(async (sql) => {
+    await queueLock(sql);
+    // Match worker/cancellation lock order: job before owner and run.
+    const active = await sql.query("SELECT id FROM jobs WHERE user_id=$1 AND run_id=$2 AND status IN ('queued','running') FOR UPDATE", [user.id, id]);
+    if (active.rows.length) throw new FlowError("A etapa anterior ainda está terminando. Aguarde e tente a decisão novamente.", 409);
+    await capacity(sql, user.id);
+    const { rows } = await sql.query<{ body: Run }>("SELECT body FROM runs WHERE user_id=$1 AND id=$2 FOR UPDATE", [user.id, id]);
+    const run = rows[0]?.body;
+    if (!run) throw new FlowError("Execução não encontrada.", 404);
+    if (run.status !== "waiting" || run.interrupted) throw new FlowError("Esta execução não aguarda essa decisão.", 409);
+    const node = run.graph.nodes.find((n) => n.id === run.next);
+    if (!node || node.data.kind !== "approval") throw new FlowError("Etapa de aprovação inválida.", 409);
+    run.trace.push({ type: "step", status: "completed", nodeId: node.id, label: node.data.label, output: decision === "yes" ? "Aprovado" : "Rejeitado", at: new Date().toISOString(), ms: 0 });
+    run.state.approval = String(decision);
+    run.next = run.graph.edges.find((edge) => edge.source === node.id && edge.sourceHandle === decision)?.target || null;
+    run.status = "running"; run.queued = true; run.updatedAt = new Date().toISOString();
+    // Both the decision and its dispatch commit together; a crash cannot strand an approved run.
+    await sql.query("UPDATE runs SET status='running',body=$3 WHERE user_id=$1 AND id=$2", [user.id, id, JSON.stringify(run)]);
+    const job = await insertJob(sql, { user_id: user.id, kind: "run", resource_id: id, run_id: id, base_id: null, source_id: null });
+    return { run, job };
+  });
+}
+export async function enqueueKnowledge(kind: "index" | "extract", baseId: string, sourceId?: string) {
+  const { db, user } = currentTenant();
+  return db.transaction(async (sql) => {
+    await capacity(sql, user.id);
+    if (!(await sql.query("SELECT id FROM knowledge_bases WHERE user_id=$1 AND id=$2", [user.id, baseId])).rows.length) throw new FlowError("Base não encontrada.", 404);
+    if (kind === "extract" && !(await sql.query("SELECT id FROM knowledge_sources WHERE user_id=$1 AND base_id=$2 AND id=$3", [user.id, baseId, sourceId])).rows.length) throw new FlowError("Fonte não encontrada.", 404);
+    return insertJob(sql, { user_id: user.id, kind, resource_id: kind === "index" ? baseId : `${baseId}:${sourceId}`, run_id: null, base_id: baseId, source_id: kind === "extract" ? sourceId! : null });
+  });
+}
+/** PostgreSQL remains authoritative if Redis loses a notification or is unavailable. */
+export async function claimJob(db: Database, preferredId?: string): Promise<Job | undefined> {
+  return db.transaction(async (sql) => {
+    await queueLock(sql);
+    if ((await sql.query<{ n: number }>("SELECT count(*)::int n FROM jobs WHERE status='running'", [])).rows[0].n >= 2) return undefined;
+    const { rows } = await sql.query<Job>(`SELECT j.* FROM jobs j JOIN users u ON u.id=j.user_id
+      WHERE j.status='queued' AND u.beta_status='approved' AND u.email_verified_at IS NOT NULL
+      AND NOT EXISTS(SELECT 1 FROM jobs busy WHERE busy.user_id=j.user_id AND busy.status='running')
+      ORDER BY (j.id::text=$1) DESC,j.created_at,j.id LIMIT 1 FOR UPDATE OF j SKIP LOCKED`, [preferredId || ""]);
+    if (!rows[0]) return undefined;
+    const job = rows[0], token = randomUUID();
+    return (await sql.query<Job>("UPDATE jobs SET status='running',lease_token=$2,lease_until=now()+interval '60 seconds',started_at=now() WHERE id=$1 RETURNING *", [job.id, token])).rows[0];
+  });
+}
+export async function heartbeatJob(db: Database, job: Job) {
+  return !!(await db.query(`UPDATE jobs j SET lease_until=now()+interval '60 seconds' FROM users u
+    WHERE j.id=$1 AND j.lease_token=$2 AND j.status='running' AND j.lease_until>now()
+    AND j.started_at>now()-interval '15 minutes' AND u.id=j.user_id AND u.beta_status='approved'
+    AND u.email_verified_at IS NOT NULL RETURNING j.id`, [job.id, job.lease_token])).rows.length;
+}
+export async function finishJob(db: Database, job: Job, error?: string) {
+  await db.transaction(async (sql) => {
+    const { rows } = await sql.query<Job>("UPDATE jobs SET status=$3,error=$4,finished_at=now(),lease_until=NULL WHERE id=$1 AND lease_token=$2 AND status='running' AND lease_until>now() RETURNING *", [job.id, job.lease_token, error ? "failed" : "done", error || null]);
+    if (error && rows[0]?.run_id) await sql.query(`UPDATE runs SET status='failed',body=(body-'queued') || $3::jsonb
+      WHERE user_id=$1 AND id=$2 AND status='running'`, [rows[0].user_id, rows[0].run_id, JSON.stringify({ status: "failed", error, updatedAt: new Date().toISOString() })]);
+  });
+}
+export async function recoverExpiredJobs(db: Database) {
+  return db.transaction(async (sql) => {
+    await queueLock(sql);
+    const { rows } = await sql.query<Job>(`SELECT * FROM jobs WHERE status='running' AND lease_until<now() FOR UPDATE SKIP LOCKED`);
+    for (const job of rows) {
+      const error = "A tarefa foi interrompida. Revise os efeitos já realizados antes de iniciar outra execução.";
+      // No blind replay: an external side effect may have succeeded before the process died.
+      await sql.query("UPDATE jobs SET status='interrupted',error=$2,finished_at=now(),lease_until=NULL WHERE id=$1", [job.id, error]);
+      if (job.run_id) await sql.query(`UPDATE runs SET status='failed',body=body || $3::jsonb
+        WHERE user_id=$1 AND id=$2 AND status='running'`, [job.user_id, job.run_id, JSON.stringify({ status: "failed", interrupted: true, error, updatedAt: new Date().toISOString() })]);
+      if (job.base_id) {
+        await sql.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [job.user_id]);
+        await sql.query("SELECT id FROM knowledge_bases WHERE user_id=$1 AND id=$2 FOR UPDATE", [job.user_id, job.base_id]);
+        const lock = (await sql.query<{ job_id: string | null; job_token: string | null }>("SELECT job_id,job_token FROM knowledge_locks WHERE user_id=$1 AND base_id=$2", [job.user_id, job.base_id])).rows[0];
+        // Another operation may have acquired the base after this worker died.
+        if (lock && (lock.job_id !== job.id || lock.job_token !== job.lease_token)) continue;
+        await sql.query("UPDATE knowledge_bases SET body=body || $3::jsonb WHERE user_id=$1 AND id=$2 AND body->>'status'='indexing'", [job.user_id, job.base_id, JSON.stringify({ status: "failed", error })]);
+        await sql.query("UPDATE knowledge_runs SET body=body || $3::jsonb WHERE user_id=$1 AND base_id=$2 AND body->>'status'='running'", [job.user_id, job.base_id, JSON.stringify({ status: "failed", error, finishedAt: new Date().toISOString() })]);
+        await sql.query("UPDATE knowledge_sources SET body=body || $3::jsonb WHERE user_id=$1 AND base_id=$2 AND body->>'status'='processing'", [job.user_id, job.base_id, JSON.stringify({ status: "failed", error })]);
+        await sql.query("DELETE FROM knowledge_locks WHERE user_id=$1 AND base_id=$2 AND job_id=$3 AND job_token=$4", [job.user_id, job.base_id, job.id, job.lease_token]);
+      }
+    }
+    return rows.length;
+  });
+}
+export async function listKnowledgeJobs(baseId: string) {
+  const { db, user } = currentTenant();
+  return (await db.query<Pick<Job, "id" | "kind" | "status" | "source_id" | "error">>("SELECT id,kind,status,source_id,error FROM jobs WHERE user_id=$1 AND base_id=$2 ORDER BY created_at DESC LIMIT 20", [user.id, baseId])).rows;
+}

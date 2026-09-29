@@ -1,0 +1,161 @@
+# Histórico de versões
+
+## 0.17.1 — 25/09/2026
+
+- Removido o acesso à Base de Conhecimento da tela Fluxo Agêntico.
+- Paginação exibida somente quando a lista contém mais de uma página.
+
+## 0.17.0 — 25/09/2026
+
+- Chat de teste com badges por chunk retornado, abrindo o conteúdo completo e sua origem em um modal. O texto consultado fica preservado na execução, respeitando referências habilitadas por base.
+- Badges das ferramentas efetivamente chamadas abrem os detalhes de entrada, saída, tempo e status, incluindo falhas e chamadas repetidas. Visualização restrita ao chat de teste.
+
+## 0.16.1 — 25/09/2026
+
+- Modal de saída simplificado: removido Continuar editando e botão Salvar e sair renomeado para Salvar.
+
+## 0.16.0 — 25/09/2026
+
+- Agente e LLM com múltiplas bases em cards no padrão de Ferramentas, descrição de uso, referências e parâmetros de consulta por base.
+- Cada base é oferecida ao modelo como ferramenta independente; busca sob demanda, inclusive em configurações antigas, e registros de entrada, saída, duração e bases disponíveis nos detalhes da execução.
+- Ícones compactos das ferramentas no bloco Agente, com nomes no tooltip e indicador de conhecimento no Agente/LLM.
+
+## 0.15.0 — 25/09/2026
+
+- Record Manager com limpeza nenhuma, incremental ou completa, identificação automática ou chave de metadados e retenção aplicada às consultas.
+- Exclusão de base com ícones e botão vermelhos, confirmação pelo nome e fechamento pelo header, sem botão Cancelar.
+- Validação da limpeza de índices locais ao migrar Faiss para Postgres e excluir a base, incluindo recuperação de falhas e isolamento entre bases.
+
+## 0.14.2 — 25/09/2026
+
+- Endereço do serviço de embeddings movido para Opções avançadas, mantendo os padrões dos provedores e as conexões já configuradas.
+
+## 0.14.1 — 25/09/2026
+
+- Campo Local do índice removido da configuração do Faiss; o armazenamento continua sendo administrado automaticamente por base e versão.
+
+## 0.14.0 — 25/09/2026
+
+- Busca configurável por base: Top K, similaridade mínima e herança no teste e no Agente, com substituição opcional. Alterar apenas a busca mantém os vetores publicados e não exige reindexação.
+- Faiss exibe o caminho da geração publicada, preservando isolamento por base/versão. Faiss e Postgres filtram metadados antes de selecionar os resultados.
+- Postgres com credencial compartilhada de usuário/senha, host, banco, porta, SSL com validação de certificado, tempos limite e compatibilidade com strings de conexão existentes. Vector Store e Record Manager reutilizam a credencial; senhas não são devolvidas à interface.
+- Postgres permite prefixo de tabela, coluna de conteúdo, lote de gravação e estratégias cosseno, euclidiana ou produto interno. Tabelas continuam isoladas por geração; a pontuação mínima é sempre similaridade de cosseno.
+- OpenAI Embeddings permite reduzir dimensões dos modelos text-embedding-3 e escolher float/base64. A troca de dimensões invalida o reaproveitamento dos vetores antigos.
+- Regressão com Faiss nativo, pgvector real, filtros, credenciais, reindexação e limpeza; comparação detalhada da jornada com o Flowise em KNOWLEDGE-FLOWISE.md.
+
+## 0.13.3 — 25/09/2026
+
+- Ícone de exclusão das bases de conhecimento em vermelho, à direita do status no cabeçalho do card.
+
+## 0.13.2 — 25/09/2026
+
+- Seção Agentflows renomeada para Fluxo Agêntico, com navegação, busca e ações usando a mesma nomenclatura.
+- Contador ao lado da busca removido, preservando o alinhamento dos controles.
+
+## 0.13.1 — 25/09/2026
+
+- Histórico valida a resposta paginada antes de atualizar a tela, impedindo erro ao acessar `items.length` em retornos inválidos ou estados antigos preservados pelo Fast Refresh.
+- Falhas de carregamento exibem aviso e nova tentativa automática, sem apresentar resultados vazios ou totais incorretos.
+- Testes de regressão para respostas legadas, campos ausentes, itens malformados e paginação.
+
+## 0.13.0 — 25/09/2026
+
+- Upload de fontes por arrastar e soltar, teclado ou clique em toda a área; nome automático igual ao primeiro arquivo. Extrair e revisar salva a configuração, sem campo de nome nem botão adicional de salvar no modal.
+- Revisão de fragmentos em modal amplo, mantendo busca, metadados e edição; reextração com indicador de andamento; confirmação de exclusão com botão vermelho e ícone, sem Cancelar.
+- Menu Credenciais entre Base de Conhecimento e Configurações, com ferramentas e os quatro provedores de embedding. Conexões reutilizáveis por base, migração automática das chaves existentes, rotação de chaves e bloqueio de exclusão enquanto vinculadas.
+- Badge discreto com versão beta abaixo da marca, tema por ícone ao lado de Workspace, cadeado em Credenciais e perfil com iniciais, nome real da sessão e opção de sair.
+- Execuções com paginação e filtro no SQLite, 20/50/100 itens por página e detalhes carregados sob demanda. O contrato anterior utilizado pelo editor permanece compatível.
+- Testes de credenciais/migração, execução com chave atualizada, nomes de arquivo, paginação acima de 100 registros, payload reduzido e autenticação do perfil.
+
+## 0.12.0 — 25/09/2026
+
+- Seletores de fontes, embeddings, bancos vetoriais e Record Managers com logos do Flowise, busca e layout adaptado aos temas do projeto.
+- Quatro provedores únicos de embeddings: Google Gemini, OpenAI, VoyageAI e Ollama, com modelos predefinidos, dimensões automáticas, processamento em lotes e preparação adequada de documentos e consultas.
+- Integrações de indexação, busca e exclusão com Chroma, Elasticsearch, Faiss nativo, MongoDB Atlas, Pinecone, Postgres, Qdrant, Weaviate, Supabase, SingleStore e OpenSearch. Faiss é o padrão das novas bases; configurações anteriores permanecem compatíveis.
+- Record Manager Postgres com tabela/namespace configuráveis, além do SQLite; conexões cifradas e limpeza por geração, inclusive depois de trocar o destino.
+- Comparação com as principais funcionalidades do Flowise em [KNOWLEDGE-FLOWISE.md](KNOWLEDGE-FLOWISE.md), com requisitos e diferenças de cada integração.
+- Validação com Postgres/pgvector e Chroma reais, SQL de preparação Supabase, Faiss nativo no Docker Alpine, contratos das APIs/drivers e revisão visual em desktop e celular. Serviços externos sem credenciais foram validados por contrato, sem homologação em contas reais.
+
+## 0.11.0 — 25/09/2026
+
+- Base de Conhecimento na tela inicial e na navegação, seguindo a jornada Document Store do Flowise: fontes, extração, revisão dos fragmentos, Embeddings, Vector Store, Record Manager e teste de consulta.
+- Vinte opções de extração em ordem alfabética, com campos por serviço, envio de arquivos, credenciais cifradas, divisão configurável e metadados por fonte ou fragmento.
+- Embeddings OpenAI/API compatível e Ollama; vetores persistidos no app ou no Qdrant; Record Manager SQLite opcional para reaproveitar embeddings sem duplicar conteúdo.
+- Indexação com histórico e progresso, substituição atômica do índice, isolamento por base, limpeza de índices anteriores e recuperação de operações interrompidas.
+- Agente permite selecionar a base, ajustar a consulta e escolher se a resposta retorna as referências encontradas. A recuperação funciona com ChatGPT e OpenRouter.
+- Testes de extração, arquivos reais, contratos dos serviços, persistência, busca, reindexação, exclusão, falhas e execução nos dois motores; revisão visual no navegador em desktop, celular e tema escuro.
+
+## 0.10.0 — 25/09/2026
+
+- Configurações > Credenciais usa o mesmo seletor com busca, nomes e ícones do bloco Agente, limitado às ferramentas que precisam de credencial. Conexões antigas continuam editáveis.
+- Ações de editar e excluir credenciais usam ícones; o botão Salvar domínios fica alinhado à direita.
+- Etapas do chat e do histórico abrem um modal com status, duração, entrada, saída e instruções do agente, seguindo os temas claro e escuro.
+- Tokens informados pelo ChatGPT e OpenRouter aparecem por etapa, incluindo entrada, saída, cache e raciocínio; consumo parcial e dados indisponíveis são identificados.
+- Respostas renderizam Markdown com listas, links, tabelas e blocos de código, sem executar HTML.
+- Corrigido o despacho de ferramentas nativas e MCP no ChatGPT; agentes com ferramentas configuradas priorizam essas integrações sobre a busca nativa.
+- Chamadas de ferramentas registram argumentos, resultado, duração, execução em andamento e falhas, inclusive no cancelamento.
+
+## 0.9.5 — 24/09/2026
+
+- Modal de IA com criação do zero e edição conversacional do fluxo atual, incluindo alterações ainda não salvas.
+- Ajustes pontuais preservam blocos, configurações, posições e conexões não envolvidos no pedido, com prévia e aplicação explícita no canvas.
+- Conversa permite refinar a proposta em sequência e mantém a prévia anterior quando uma solicitação falha.
+- Atualizações de variáveis em Agente e LLM usam cartões como os do Início, com exclusão por ícone e prevenção de variáveis duplicadas.
+- Novo valor oferece referências por clique, teclado e touch, mantendo o formato `{{...}}` e dispensando o botão de usar a resposta do agente.
+- Check do nome do bloco aparece somente durante a edição e fica oculto após a confirmação.
+
+## 0.9.4 — 24/09/2026
+
+- Geração com IA alterna mensagens durante a espera e mostra o tempo decorrido.
+- Condições com critérios adicionáveis, comparadores de texto e número e saídas numeradas; o primeiro critério atendido define o caminho.
+- Última saída automática quando nenhum critério é atendido, com mínimo de duas saídas e preservação dos fluxos antigos Sim/Não.
+- Remover um critério elimina somente a conexão correspondente, preservando as demais e o caminho automático.
+- Geração por IA e execução compatíveis com condições de múltiplas saídas.
+- Hover e foco visíveis no header, com áreas iguais para Implantar e Configurações e alvos ampliados no touch.
+
+## 0.9.3 — 24/09/2026
+
+- Novos fluxos abrem sem nome e sem gravação automática, apenas com Início centralizado; o primeiro salvamento pede o nome.
+- Salvar preserva blocos, posições e conexões, inclusive fluxos em construção. A validação de execução aparece no chat.
+- Salvamento atualiza a v1 usada pelos testes e integrações, sem ação separada de publicação.
+- Nome editável no header, asterisco para alterações pendentes, ações no menu de configurações e botão Salvar por ícone, com confirmação destacada.
+- Opções dos blocos acessíveis por hover, clique e toque; Agente e LLM com textos mais discretos e avisos de conexão corrigidos.
+- Geração com IA simplificada, campo de descrição ampliado e progresso transmitido pelo servidor, com animação de blocos e conclusão após validação.
+- Integrações agrupadas, geração de chave de acesso no próprio painel e cópia com feedback.
+- Chat no site com modos simples e detalhado, localhost permitido por padrão sem domínios definidos e instalação com feedback de cópia.
+- Preview do chat abre em nova aba e oferece o script de instalação; controles de domínio reutilizados nas configurações.
+
+## 0.9.2 — 24/09/2026
+
+- Conexões sempre visíveis; seta de saída no hover do bloco, com acesso permanente no touch e alvos de toque ampliados.
+- Chat sem simulação ou exemplos, com botão Conectar ChatGPT abaixo da apresentação quando nenhum motor está conectado.
+- Campo de mensagem com uma linha inicial, crescimento até três linhas e rolagem para textos maiores.
+- Modais de blocos aplicam alterações ao fechar ou clicar fora, mantendo a validação e removendo os botões Salvar e Cancelar.
+- Variáveis do Início separadas em cartões com exclusão por ícone.
+- Agente e LLM com seleção de modelo, indicação de conexão e menos avisos.
+- Pesquisa web do ChatGPT ativa automaticamente para Agente e LLM, incluindo fluxos existentes.
+
+## 0.9.1 — 24/09/2026
+
+- Pontos de saída sempre visíveis, linhas com maior contraste e área de entrada ampliada para conectar blocos.
+- Dicas distinguem saídas já conectadas de saídas disponíveis.
+
+## 0.9.0 — 24/09/2026
+
+- Chat incorporado com retomada da conversa, eventos da página, captura de tela, aprovação humana e cancelamento.
+- Execuções persistentes com limite de tempo e revisão de tarefas interrompidas.
+- Início com nome fixo, editor de variáveis e referências `{{fluxo.NomeVariavel}}`, preservando `{{state.nome}}`.
+- Atualização de variáveis ao concluir Agente/LLM e resposta direta em etapas terminais.
+- Modelo como primeiro campo e pesquisa web opcional na conexão ChatGPT.
+- Domínios autorizados em Configurações > Segurança, aplicados ao acesso e ao iframe.
+- Compose para Coolify com volume persistente e documentação de instalação.
+
+## 0.5.0 — 20/09/2026
+
+- Conexões com quatro cartões alinhados: ChatGPT, OpenRouter, WhatsApp e ElevenLabs.
+- Aceite dos termos StartSe para Z-API e ZapperHub, com registro e validação no servidor.
+- Limites da assinatura ChatGPT: percentual disponível, janela e próxima renovação, pelo protocolo oficial.
+- Chat com limpar, expandir e fechar no topo, sem cabeçalho duplicado. Exemplos e simulação somem com IA conectada.
+- Catálogo com todas as 24 ferramentas solicitadas, seleção independente por agente e credenciais reutilizáveis entre agentes e fluxos.
+- Gestão de credenciais e servidores dentro do Agente; remoção explicita o impacto sobre os demais agentes.
+- Google Workspace e Microsoft 365 por credenciais OAuth; renovação opcional. Browserless e Slack pelo SDK MCP oficial; E2B em sandbox remoto. Arquivos confinados à pasta dos agentes e operações OpenAPI 3 em JSON.

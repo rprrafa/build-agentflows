@@ -1,0 +1,107 @@
+x-app-environment: &app-environment
+  NODE_ENV: production
+  DATA_DIR: /app/data
+  APP_URL: ${APP_URL:?Informe a URL publica HTTPS}
+  CHAVE_MESTRA: ${CHAVE_MESTRA:?Informe 32 bytes em base64}
+  DATABASE_URL: postgresql://agentflows:${POSTGRES_PASSWORD:?Informe senha base64url}@postgres:5432/agentflows
+  REDIS_URL: redis://:${REDIS_PASSWORD:?Informe senha base64url}@redis:6379
+  RESEND_API_KEY: ${RESEND_API_KEY:?Configure o Resend}
+  RESEND_FROM: ${RESEND_FROM:?Configure o remetente verificado}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    init: true
+    restart: unless-stopped
+    expose:
+      - "10000"
+    environment:
+      <<: *app-environment
+      PORT: "10000"
+      HOSTNAME: 0.0.0.0
+    volumes:
+      - dados:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:10000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    mem_limit: 1536m
+    cpus: 1.5
+    pids_limit: 256
+    stop_grace_period: 60s
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["node", "--import", "./scripts/gancho-ts.mjs", "scripts/worker.mjs"]
+    init: true
+    restart: unless-stopped
+    environment: *app-environment
+    volumes:
+      - dados:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "--import", "./scripts/gancho-ts.mjs", "scripts/worker-health.mjs"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    mem_limit: 2048m
+    cpus: 2
+    pids_limit: 256
+    stop_grace_period: 60s
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agentflows
+      POSTGRES_DB: agentflows
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Informe senha base64url}
+    volumes:
+      - postgres-dados:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentflows -d agentflows"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 768m
+    cpus: 1
+    stop_grace_period: 60s
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Informe senha base64url}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --maxmemory 96mb --maxmemory-policy noeviction --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - redis-dados:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 192m
+    cpus: 0.5
+    stop_grace_period: 30s
+volumes:
+  dados:
+  postgres-dados:
+  redis-dados:

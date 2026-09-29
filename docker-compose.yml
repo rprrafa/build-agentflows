@@ -1,0 +1,8 @@
+services:
+  app:
+    build: .
+    ports: ["3019:10000"]
+    volumes: [dados:/app/data]
+    restart: unless-stopped
+volumes:
+  dados:

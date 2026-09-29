@@ -1,0 +1,21 @@
+# Blueprint de publicação de Build Agentflows (especificação: https://render.com/docs/blueprint-spec)
+# Imagem pública publicada pelo GitHub Actions em ghcr.io/startse/build-agentflows:latest.
+# Este app exige o plano starter (pago) e cria um disco de 1 GB em /app/data, onde ficam fluxos, versões publicadas, execuções, aprovações pendentes, conta e credenciais.
+# Nenhuma chave é necessária aqui.
+services:
+  - type: web
+    name: build-agentflows
+    runtime: image
+    image:
+      url: ghcr.io/startse/build-agentflows:latest
+    plan: starter
+    region: oregon
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: "10000"
+    # Fluxos, versões publicadas, execuções, aprovações pendentes, conta e credenciais ficam em /app/data e sobrevivem a deploys.
+    disk:
+      name: build-agentflows-dados
+      mountPath: /app/data
+      sizeGB: 1

@@ -1,0 +1,35 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+const dir = mkdtempSync(join(tmpdir(), "agentflows-conversation-")); process.env.DATA_DIR = dir;
+const { createFlow, saveFlow, getFlow } = await import("./flow-store");
+const { startRun } = await import("./flow-runtime");
+const { conversationHistory } = await import("./conversation");
+const { chatGPT } = await import("./chatgpt");
+const { template } = await import("./flow-types");
+const bridge = chatGPT(); bridge.account = async () => ({ account: { type: "chatgpt", email: "fixture@example.com", planType: "plus" }, login: null, error: null });
+bridge.run = async () => "Ana escolheu o plano Azul.";
+test.after(() => rmSync(dir, { recursive: true, force: true }));
+test("pergunta de continuidade recebe contexto do mesmo fluxo sem alterar a entrada atual", async () => {
+  const flow = createFlow("Conversa");
+  const graph = template();
+  graph.nodes = graph.nodes.filter((node) => node.data.kind !== "end");
+  graph.edges = graph.edges.filter((edge) => edge.target !== "resposta");
+  saveFlow(flow.id, { ...flow, graph });
+  const first = await startRun(flow.id, "Ana escolheu Azul", false, false);
+  bridge.run = async ({ prompt }) => { assert.match(prompt, /Ana escolheu o plano Azul/); assert.match(prompt, /Qual plano ela escolheu/); return "Azul"; };
+  const second = await startRun(flow.id, "Qual plano ela escolheu?", false, false, [], [first.id]);
+  assert.equal(second.status, "completed"); assert.equal(second.input, "Qual plano ela escolheu?"); assert.equal(second.conversation?.length, 1);
+  const other = createFlow("Outro"); assert.throws(() => conversationHistory(other.id, [first.id]), /deste fluxo/);
+  assert.throws(() => conversationHistory(flow.id, [first.id, first.id]), /inválido/);
+  assert.throws(() => conversationHistory(flow.id, Array.from({ length: 1001 }, (_, i) => String(i))), /mil interações/);
+  const demo = await startRun(flow.id, "Demo", false, true); assert.throws(() => conversationHistory(flow.id, [demo.id]), /concluídas/);
+});
+test("voz pertence ao fluxo, persiste ao reabrir e sobrevive ao salvamento de cliente anterior", () => {
+  const flow = createFlow("Voz"); saveFlow(flow.id, { ...flow, voiceId: "voz-portugues" });
+  assert.equal(getFlow(flow.id).voiceId, "voz-portugues"); saveFlow(flow.id, { ...flow, name: "Renomeado" }); assert.equal(getFlow(flow.id).voiceId, "voz-portugues");
+  assert.throws(() => saveFlow(flow.id, { ...flow, voiceId: "../segredo" }), /voz válida/);
+  saveFlow(flow.id, { ...flow, voiceId: "" }); assert.equal(getFlow(flow.id).voiceId, "");
+});

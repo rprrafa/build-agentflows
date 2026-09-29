@@ -1,0 +1,388 @@
+"use client";
+import { KnowledgeAgentFields } from "./KnowledgeAgentFields";
+import { knowledgeSettings } from "@/lib/knowledge-settings";
+import { useEffect, useState } from "react";
+import { conditionCriteria, COMPARISONS, type Criterion } from "@/lib/flow-conditions";
+import { BLOCKS, type Block, type Kind } from "@/lib/flow-types";
+import { NODE_STYLE } from "@/lib/flow-presets";
+import { Icon, IconButton, Modal, request } from "./StudioUI";
+import { ReferenceField, type Reference } from "./ReferenceField";
+import { ToolPicker } from "./ToolPicker";
+import { ModelPicker } from "./ModelPicker";
+import { memorySettings } from "@/lib/memory-settings";
+import { MemoryFields } from "./MemoryFields";
+const fields: Record<Kind, string[]> = {
+  start: [],
+  llm: ["model", "system", "memoryType", "prompt"],
+  agent: ["model", "system", "memoryType", "prompt", "tools"],
+  condition: [],
+  state: ["key", "value"],
+  http: ["url", "method", "body", "credential"],
+  tool: ["tool", "args"],
+  approval: ["prompt"],
+  loop: ["limit"],
+  whatsapp: ["to", "text"],
+  call: ["to", "context"],
+  end: ["text"],
+};
+const labels: Record<string, [string, string]> = {
+  system: ["Instruções", ""],
+  memoryType: ["Memória", ""],
+  prompt: [
+    "Mensagem (opcional)",
+    "",
+  ],
+  model: ["Modelo de IA", ""],
+  tools: ["Ferramentas", ""],
+  state: ["Estado inicial", "Objeto JSON com valores de texto, opcional."],
+  value: ["Valor", "Texto que será comparado."],
+  operator: ["Comparação", ""],
+  compare: ["Comparar com", ""],
+  key: ["Nome da variável", "Letras e números, sem espaços."],
+  url: ["Endereço do serviço", "Endereço fixo, definido por você."],
+  method: ["Método", ""],
+  body: ["Conteúdo enviado", "JSON enviado ao serviço."],
+  credential: [
+    "Nome da credencial",
+    "Nome FLOW_SECRET_ definido no servidor. Não cole o segredo aqui.",
+  ],
+  tool: ["Ferramenta", "Ferramenta do serviço conectado."],
+  args: ["Argumentos", "JSON com os parâmetros da ferramenta."],
+  limit: ["Máximo de repetições", "Entre 1 e 20 passagens."],
+  text: ["Resposta final", "Texto entregue a quem chamou o fluxo."],
+  to: ["Número de destino", "Com DDI e DDD, ex.: 5511999990000. Aceita {{state.telefone}}."],
+  context: ["Contexto da ligação", "O que o agente de voz deve saber e fazer nesta chamada."],
+};
+const TEXTAREAS = ["system", "prompt", "state", "body", "args", "text", "context"];
+const REFERENCES = ["system", "prompt", "value", "compare", "body", "args", "text", "to", "context"];
+
+
+type ToolInfo = {
+  id: string;
+  name: string;
+  description: string;
+  category?: string;
+  configured?: boolean;
+
+  setup?: string;
+};
+type ToolGroup = { id: string; name: string; kind: "builtin" | "mcp"; tools: ToolInfo[]; error?: string };
+// Diálogo de edição do bloco, no formato do Flowise: ícone colorido, nome editável em linha
+// e a lista de campos do tipo. Referências e ferramentas entram por clique, sem digitar código.
+export function NodeDialog({
+  node,
+  nodes,
+  models,
+  onClose,
+  onSave,
+  onRename,
+  connected,
+  onConnect,
+}: {
+  node: Block;
+  nodes: Block[];
+  models: { id: string; name: string }[];
+  onClose: () => void;
+  onSave: (n: Block) => void;
+  onRename: (label: string) => void;
+  connected: boolean;
+  onConnect: () => void;
+}) {
+  const [draft, setDraft] = useState(() => structuredClone(node)),
+    [groups, setGroups] = useState<ToolGroup[] | null>(null),
+    [savedName, setSavedName] = useState(node.data.label),
+    [nameSaved, setNameSaved] = useState(false);
+  const [nameEditing, setNameEditing] = useState(false);
+  const [criteria, setCriteria] = useState<Criterion[]>(() => node.data.kind === "condition" ? conditionCriteria(node.data.config) : []);
+  const [closeError, setCloseError] = useState("");
+  const [variables, setVariables] = useState<{ key: string; value: string }[]>(() => {
+    try { return Object.entries(JSON.parse(node.data.config.state || "{}")).map(([key, value]) => ({ key, value: String(value) })); } catch { return []; }
+  });
+  const [updates, setUpdates] = useState<{ key: string; value: string }[]>(() => {
+    try { const rows = JSON.parse(node.data.config.stateUpdates || "[]"); return Array.isArray(rows) ? rows.filter((u) => u && typeof u.key === "string" && typeof u.value === "string") : []; } catch { return []; }
+  });
+  const invalidVariables = variables.some((v) => !/^[a-zA-Z][a-zA-Z0-9_]{0,60}$/.test(v.key)) || new Set(variables.map((v) => v.key)).size !== variables.length;
+  const c = draft.data.config,
+    k = draft.data.kind;
+  useEffect(() => {
+    if (k !== "tool") return;
+    let alive = true;
+    void request<ToolGroup[]>("/api/tools")
+      .then((g) => alive && setGroups(g))
+      .catch(() => alive && setGroups([]));
+    return () => {
+      alive = false;
+    };
+  }, [k]);
+  function change(key: string, value: string) {
+    setDraft((d) => ({
+      ...d,
+      data: { ...d.data, config: { ...d.data.config, [key]: value } },
+    }));
+  }
+  // Ids antigos (nome sem prefixo) pertencem ao servidor "Ferramentas" da primeira versão.
+  const normalize = (id: string) => (id.includes(":") ? id : "mcp:FERRAMENTAS:" + id);
+  // Enter ou o check no título salvam só o nome; o diálogo continua aberto.
+  function saveName() {
+    const label = draft.data.label.trim();
+    if (!label) return;
+    setNameEditing(false);
+    if (label === savedName) return;
+    onRename(label);
+    setSavedName(label);
+    setNameSaved(true);
+    setTimeout(() => setNameSaved(false), 1800);
+  }
+  function saveAndClose() {
+    if (k === "agent" || k === "llm") {
+      try { knowledgeSettings(c); } catch (error) {
+        setCloseError((error as Error).message);
+        return false;
+      }
+    }
+    if (k === "agent" || k === "llm") {
+      try { memorySettings(c); } catch (error) {
+        setCloseError((error as Error).message);
+        return false;
+      }
+    }
+    if (!draft.data.label.trim() || (k === "start" && invalidVariables) || updates.some((u) => !updateKeys.has(u.key)) || new Set(updates.map((u) => u.key)).size !== updates.length) {
+      setCloseError("Confira o nome do bloco e use nomes únicos e válidos nas variáveis antes de fechar.");
+      return false;
+    }
+    onSave({
+      ...draft,
+      data: { ...draft.data, label: k === "start" ? "Início" : draft.data.label.trim(), config: { ...c, ...(k === "condition" ? { criteria: JSON.stringify(criteria) } : {}), ...(k === "start" ? { state: JSON.stringify(Object.fromEntries(variables.map((v) => [v.key, v.value]))) } : {}), ...(["agent", "llm"].includes(k) ? { stateUpdates: JSON.stringify(updates) } : {}) } },
+    });
+    onClose();
+    return true;
+  }
+  const known = new Set((groups || []).flatMap((g) => g.tools.map((t) => t.id)));
+  const stateKeys = new Set<string>();
+  for (const n of nodes) {
+    if (n.data.kind === "state" && n.data.config.key)
+      stateKeys.add(n.data.config.key);
+    if (n.data.kind === "start")
+      try {
+        Object.keys(JSON.parse(n.data.config.state || "{}")).forEach((k) =>
+          stateKeys.add(k),
+        );
+      } catch {}
+  }
+  const updateKeys = new Set<string>();
+  try { Object.keys(JSON.parse(nodes.find((n) => n.data.kind === "start")?.data.config.state || "{}")).forEach((key) => updateKeys.add(key)); } catch {}
+  const references: Reference[] = [
+    { value: "{{input}}", label: "Conversa", hint: "o que a pessoa enviou" },
+    { value: "{{last}}", label: "Etapa anterior", hint: "resultado do bloco anterior" },
+    ...[...stateKeys].map((k) => ({
+      value: `{{fluxo.${k}}}`,
+      label: "Variável " + k,
+    })),
+    { value: "{{state.approval}}", label: "Decisão da aprovação", hint: "yes ou no" },
+    ...nodes
+      .filter(
+        (o) => o.id !== node.id && !["start", "end"].includes(o.data.kind),
+      )
+      .map((o) => ({
+        value: `{{nodes.${o.id}}}`,
+        label: o.data.label,
+        hint: BLOCKS[o.data.kind].label,
+      })),
+  ];
+  return (
+    <Modal
+      title={k === "start" ? "Início" :
+        <div className="modal-title-input">
+          <input
+            value={draft.data.label}
+            maxLength={100}
+            aria-label="Nome do bloco"
+            onClick={() => { setNameEditing(true); setNameSaved(false); }}
+            placeholder={BLOCKS[k].label}
+            onChange={(e) => {
+              setNameEditing(true); setNameSaved(false);
+              setDraft({ ...draft, data: { ...draft.data, label: e.target.value } });
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && draft.data.label.trim()) {
+                e.preventDefault();
+                saveName();
+              }
+            }}
+          />
+          {nameSaved ? (
+            <span className="modal-title-saved">
+              <Icon name="check" size={14} />
+              Nome salvo
+            </span>
+          ) : nameEditing ? (
+            <IconButton
+              icon="check"
+              label="Salvar nome"
+              disabled={
+                !draft.data.label.trim()
+              }
+              onClick={saveName}
+            />
+          ) : null}
+        </div>
+      }
+      onClose={saveAndClose}
+    >
+      <div className="node-dialog-type">
+        <span style={{ background: NODE_STYLE[k].color }}>
+          <Icon name={k} size={24} />
+        </span>
+        <div>
+          <strong>{BLOCKS[k].label}</strong>
+          <p>{BLOCKS[k].help}</p>
+        </div>
+      </div>
+      {!["start", "agent", "llm"].includes(k) && <p className="reference-tip">
+        Digite <code>{"{{"}</code> em qualquer campo para inserir a conversa, o
+        resultado anterior ou uma variável como <code>{"{{fluxo.Resumo}}"}</code>.
+      </p>}
+      <div className="node-fields">
+        {k === "start" && <section className="node-fields">
+          <strong>Variáveis do fluxo</strong>
+          <small>Defina um nome e um valor inicial, que pode ficar em branco. Os agentes podem atualizar esses valores durante o fluxo.</small>
+          {variables.map((v, i) => <div className="node-field node-variable-card" key={i}>
+            <div className="node-variable-heading"><strong>Variável {i + 1}</strong><IconButton icon="trash" label={`Excluir variável ${i + 1}`} onClick={() => setVariables(variables.filter((_, j) => j !== i))} /></div>
+            <label>Nome da variável<input aria-label={`Nome da variável ${i + 1}`} value={v.key} maxLength={61} placeholder="Ex.: Resumo" onChange={(e) => setVariables(variables.map((x, j) => j === i ? { ...x, key: e.target.value } : x))} /></label>
+            <label>Valor inicial<textarea aria-label={`Valor inicial ${i + 1}`} value={v.value} maxLength={20000} rows={2} onChange={(e) => setVariables(variables.map((x, j) => j === i ? { ...x, value: e.target.value } : x))} /></label>
+          </div>)}
+          <button className="studio-button" disabled={variables.length >= 50} onClick={() => setVariables([...variables, { key: "", value: "" }])}>Adicionar variável</button>
+          {invalidVariables && <small role="alert">Use nomes únicos, começando com uma letra, sem espaços ou acentos.</small>}
+        </section>}
+
+        {k === "condition" && <section className="condition-criteria">
+          <p>O primeiro critério atendido define o caminho. Quando nenhum é atendido, o fluxo segue pela última saída.</p>
+          {criteria.map((row, index) => <div className="condition-criterion" key={row.id}>
+            <div className="condition-criterion-heading"><span>Critério {index + 1} <small>Saída {index + 1}</small></span>
+              <IconButton icon="trash" label={`Remover critério ${index + 1}`} disabled={criteria.length === 1} onClick={() => setCriteria(criteria.filter((item) => item.id !== row.id))} />
+            </div>
+            <label>Valor a avaliar<ReferenceField ariaLabel={`Valor do critério ${index + 1}`} value={row.value} references={references} placeholder="Ex.: {{last}}" onChange={(value) => setCriteria(criteria.map((item) => item.id === row.id ? { ...item, value } : item))} /></label>
+            <label>Comparação<select aria-label={`Comparação do critério ${index + 1}`} value={row.operator} onChange={(event) => setCriteria(criteria.map((item) => item.id === row.id ? { ...item, operator: event.target.value } : item))}>
+              {COMPARISONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select></label>
+            {!['empty', 'notEmpty'].includes(row.operator) && <label>Comparar com<ReferenceField ariaLabel={`Comparar critério ${index + 1} com`} value={row.compare} references={references} placeholder="Texto ou valor" onChange={(compare) => setCriteria(criteria.map((item) => item.id === row.id ? { ...item, compare } : item))} /></label>}
+          </div>)}
+          <button className="studio-button" disabled={criteria.length >= 119} onClick={() => setCriteria([...criteria, { id: 'criterion_' + crypto.randomUUID(), value: '{{last}}', operator: 'equals', compare: '' }])}><Icon name="plus" size={16} />Adicionar critério</button>
+        </section>}
+
+        {fields[k].map((key) => (
+          <div className="node-field" key={key}>
+            {key !== "memoryType" && <span className="field-title">
+              {k === "approval" && key === "prompt"
+                ? "O que a pessoa deve revisar"
+                : labels[key][0]}
+            </span>}
+            {key === "memoryType" ? (
+              <MemoryFields config={c} onChange={change} />
+            ) : key === "model" ? (
+              <>
+              <ModelPicker
+                value={c[key] || ""}
+                chatModels={models}
+                connected={connected}
+                onChange={(v) => change(key, v)}
+              />
+              {!connected && <small>
+                Conecte o ChatGPT para executar de verdade.{" "}
+                <button type="button" className="node-connect-link" onClick={() => { if (saveAndClose()) onConnect(); }}>Conectar</button>
+              </small>}
+              </>
+            ) : key === "operator" || key === "method" ? (
+              <select
+                value={c[key] || ""}
+                onChange={(e) => change(key, e.target.value)}
+              >
+                {(key === "operator"
+                  ? COMPARISONS
+                  : ["GET", "POST", "PUT", "PATCH", "DELETE"].map(
+                      (v): [string, string] => [v, v],
+                    )
+                ).map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            ) : key === "tools" ? (
+              <ToolPicker value={c.tools || ""} cardsValue={c.toolCards || ""} onChange={(tools, toolCards) => setDraft((d) => ({
+                ...d, data: { ...d.data, config: { ...d.data.config, tools, toolCards } },
+              }))} />
+            ) : key === "tool" ? (
+              <select
+                value={c[key] ? normalize(c[key]) : ""}
+                onChange={(e) => change(key, e.target.value)}
+              >
+                <option value="">Escolha uma ferramenta</option>
+                {(groups || []).map((g) => (
+                  <optgroup key={g.id} label={g.name}>
+                    {g.tools.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+                {c.tool && !known.has(normalize(c.tool)) && (
+                  <option value={normalize(c.tool)}>
+                    {c.tool.split(":").pop()} · fora do ar
+                  </option>
+                )}
+              </select>
+            ) : TEXTAREAS.includes(key) ? (
+              <ReferenceField
+                multiline
+                rows={key === "system" ? 5 : 3}
+                ariaLabel={labels[key][0]}
+                placeholder={key === "prompt" && (k === "agent" || k === "llm") ? "Define a mensagem desta etapa, sem uma chamada extra à IA. Use {{last}} para incluir a resposta anterior. Em branco, usa a conversa ou o resultado anterior." : undefined}
+                spellCheck={key === "system" || key === "prompt"}
+                value={c[key] || ""}
+                references={references}
+                onChange={(v) => change(key, v)}
+              />
+            ) : REFERENCES.includes(key) ? (
+              <ReferenceField
+                value={c[key] || ""}
+                references={references}
+                onChange={(v) => change(key, v)}
+              />
+            ) : (
+              <input
+                type={key === "limit" ? "number" : "text"}
+                min={key === "limit" ? 1 : undefined}
+                max={key === "limit" ? 20 : undefined}
+                value={c[key] || ""}
+                onChange={(e) => change(key, e.target.value)}
+              />
+            )}
+            {k === "approval" && key === "prompt" ? (
+              <small>Mostrado junto com o resultado, antes da decisão.</small>
+            ) : k === "whatsapp" && key === "text" ? (
+              <small>Mensagem enviada. Em branco não envia nada.</small>
+            ) : (
+              labels[key][1] && <small>{labels[key][1]}</small>
+            )}
+          </div>
+        ))}
+        {(k === "agent" || k === "llm") && <KnowledgeAgentFields config={c} onChange={change} />}
+        {(k === "agent" || k === "llm") && <section className="node-fields node-completion">
+          <span className="node-completion-title">Ao concluir esta etapa</span>
+          {updates.map((u, i) => <div className="node-field node-variable-card" role="group" aria-label={`Atualização de variável ${i + 1}`} key={i}>
+            <div className="node-variable-heading"><strong>Variável {i + 1}</strong><IconButton icon="trash" label={`Excluir atualização ${i + 1}`} onClick={() => setUpdates(updates.filter((_, j) => j !== i))} /></div>
+            <label>Nome da variável<select aria-label={`Variável a atualizar ${i + 1}`} value={u.key} onChange={(e) => setUpdates(updates.map((x, j) => j === i ? { ...x, key: e.target.value } : x))}>
+              <option value="">Escolha uma variável</option>
+              {[...updateKeys].map((key) => <option key={key} value={key} disabled={updates.some((update, index) => index !== i && update.key === key)}>{key}</option>)}
+            </select></label>
+            <label>Novo valor<ReferenceField showOnFocus multiline rows={2} value={u.value} ariaLabel={`Novo valor ${i + 1}`} onChange={(value) => setUpdates(updates.map((x, j) => j === i ? { ...x, value } : x))} references={[{ value: `{{nodes.${node.id}}}`, label: "Resposta deste agente" }, ...references.filter((r) => r.value !== "{{last}}")]} /></label>
+          </div>)}
+          <button className="studio-button" disabled={!updateKeys.size || updates.length >= updateKeys.size} onClick={() => setUpdates([...updates, { key: [...updateKeys].find((key) => !updates.some((u) => u.key === key)) || "", value: `{{nodes.${node.id}}}` }])}>Atualizar variável de estado</button>
+        </section>}
+      </div>
+      {closeError && <p className="studio-error" role="alert">{closeError}</p>}
+    </Modal>
+  );
+}

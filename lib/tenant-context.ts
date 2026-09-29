@@ -1,0 +1,58 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import { findSession, requireBetaAccess, type SaasUser } from "./saas-auth";
+import type { Database } from "./saas-db";
+import { AuthError } from "./saas-security";
+import { loadConfigState, commitConfigState, type ConfigState } from "./tenant-config-state";
+
+type TenantContext = { readonly user: Readonly<SaasUser>; readonly db: Database; readonly config: ConfigState; active: boolean };
+const contexts = new AsyncLocalStorage<TenantContext>();
+export function saasEnabled() { return !!process.env.DATABASE_URL; }
+
+export function currentTenant(): TenantContext {
+  const context = contexts.getStore();
+  if (!context?.active) throw new AuthError("Contexto de usuário ausente ou encerrado.", 401);
+  return context;
+}
+
+/** Legacy mode exists only while no SaaS database is configured. Never fall back from a failed session. */
+export function tenantId(): string | undefined {
+  const context = contexts.getStore();
+  if (context || saasEnabled()) return currentTenant().user.id;
+  return undefined;
+}
+
+export function forbidLegacyStorage() {
+  if (contexts.getStore() || saasEnabled()) throw new Error("O armazenamento global SQLite não pode ser usado no contexto SaaS.");
+}
+
+async function run<T>(db: Database, user: SaasUser, action: () => T | Promise<T>): Promise<T> {
+  if (contexts.getStore()) throw new Error("Não é permitido trocar de usuário dentro de uma operação.");
+  requireBetaAccess(user);
+  const context: TenantContext = { db, user: Object.freeze({ ...user }), config: await loadConfigState(db, user.id), active: true };
+  return contexts.run(context, async () => {
+    try {
+      const result = await action();
+      if (!(result instanceof Response) || result.ok || (result.status >= 300 && result.status < 400)) {
+        await commitConfigState(db, user.id, context.config);
+      }
+      return result;
+    }
+    finally { context.active = false; }
+  });
+}
+
+/** HTTP/Server Component entry: identity comes only from the validated session. */
+export async function withTenantSession<T>(db: Database, token: string | undefined, action: () => T | Promise<T>) {
+  const user = await findSession(db, token);
+  requireBetaAccess(user);
+  return run(db, user, action);
+}
+
+/** Worker entry: userId must be read from the persisted job, never from a request payload. */
+export async function withTenantJob<T>(db: Database, userId: string, action: () => T | Promise<T>) {
+  if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(userId)) throw new AuthError("Usuário inválido.", 401);
+  const { rows } = await db.query<SaasUser>("SELECT id,name,email,email_verified_at,beta_status FROM users WHERE id=$1", [userId]);
+  const user = rows[0] || null;
+  requireBetaAccess(user);
+  return run(db, user, action);
+}
