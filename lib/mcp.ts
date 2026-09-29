@@ -1,114 +1,63 @@
-// Implementação própria do protocolo MCP (JSON-RPC 2.0 sobre Streamable HTTP) para app/mcp/route.ts.
-// Decisão (ver README): implementação própria em vez de @modelcontextprotocol/sdk, porque o app só
-// precisa de "tools/list" e "tools/call" (sem resources, prompts ou streaming de progresso) — a
-// mesma filosofia de lib/store.ts (SQLite sem dependências) evitando uma dependência pesada para pouco uso.
 import crypto from "node:crypto";
 import { getConfig, mascarar, setConfig } from "./store";
+import { currentTenant, withTenantJob } from "./tenant-context";
+import { saasDatabase } from "./saas-db";
+import { AuthError, appOrigin } from "./saas-security";
+import { consumeRateLimit, rateLimitClient } from "./saas-rate-limit";
+import { httpError, privateJson } from "./saas-http";
 
 export type Ferramenta = {
   nome: string;
   descricao: string;
-  schema: Record<string, unknown>;
+  schema: { type: "object"; properties: Record<string, unknown>; required?: string[] };
   executar: (args: Record<string, unknown>) => Promise<unknown>;
 };
-
-type RpcRequisicao = { jsonrpc: "2.0"; id?: string | number | null; method: string; params?: Record<string, unknown> };
-type RpcResposta = { jsonrpc: "2.0"; id: string | number | null; result?: unknown; error?: { code: number; message: string } };
-
 const CHAVE_CODIGO = "MCP_CODIGO_ACESSO";
-const LIMITE_CHAMADAS = 60;
-const JANELA_MS = 60_000;
-const contadores = new Map<string, { inicio: number; contagem: number }>();
+const CODE_PATTERN = /^af_([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\.([A-Za-z0-9_-]{43})$/;
 
 export function codigoAtivo(): string | undefined {
+  currentTenant();
   return getConfig(CHAVE_CODIGO);
 }
-
-export function codigoMascarado(): string | null {
-  return mascarar(codigoAtivo());
-}
-
-/** Gera um novo código de acesso (32 bytes aleatórios) e invalida o anterior. */
+export function codigoMascarado(): string | null { return mascarar(codigoAtivo()); }
+/** The owner prefix only routes authentication; it never grants access by itself. */
 export function gerarCodigo(): string {
-  const codigo = crypto.randomBytes(32).toString("base64url");
+  const codigo = `af_${currentTenant().user.id}.${crypto.randomBytes(32).toString("base64url")}`;
   setConfig(CHAVE_CODIGO, codigo);
-  contadores.clear();
   return codigo;
 }
-
-export function revogarCodigo(): void {
-  setConfig(CHAVE_CODIGO, null);
-  contadores.clear();
-}
-
-function compararSeguro(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return crypto.timingSafeEqual(bufA, bufB);
-}
-
-/** Extrai o código do cabeçalho Authorization: Bearer <código>, ou null se ausente. */
+export function revogarCodigo(): void { currentTenant(); setConfig(CHAVE_CODIGO, null); }
 export function extrairCodigo(req: Request): string | null {
   const auth = req.headers.get("authorization") || "";
-  if (!auth.startsWith("Bearer ")) return null;
-  const recebido = auth.slice(7).trim();
-  return recebido || null;
+  return auth.startsWith("Bearer ") && auth.length <= 256 ? auth.slice(7).trim() || null : null;
 }
-
-export function autenticar(codigoRecebido: string | null): boolean {
+export function autenticar(recebido: string | null): boolean {
   const ativo = codigoAtivo();
-  if (!ativo || !codigoRecebido) return false;
-  return compararSeguro(codigoRecebido, ativo);
+  if (!ativo || !recebido) return false;
+  const a = Buffer.from(ativo), b = Buffer.from(recebido);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
-
-/** true quando o código já passou de 60 chamadas no último minuto. */
-export function limiteExcedido(codigo: string): boolean {
-  const agora = Date.now();
-  const atual = contadores.get(codigo);
-  if (!atual || agora - atual.inicio >= JANELA_MS) {
-    contadores.set(codigo, { inicio: agora, contagem: 1 });
-    return false;
-  }
-  atual.contagem += 1;
-  return atual.contagem > LIMITE_CHAMADAS;
-}
-
-export async function tratarRequisicaoRpc(corpo: RpcRequisicao, ferramentas: Ferramenta[], nomeServidor: string): Promise<RpcResposta> {
-  const id = corpo.id ?? null;
-  const { method, params } = corpo;
+/** Authenticate before tools can read flows, credentials or knowledge. No cookie fallback. */
+export async function integrationApi(req: Request, action: () => unknown | Promise<unknown>) {
   try {
-    if (method === "initialize") {
-      return {
-        jsonrpc: "2.0",
-        id,
-        result: {
-          protocolVersion: "2024-11-05",
-          capabilities: { tools: {} },
-          serverInfo: { name: nomeServidor, version: "1.0.0" },
-        },
-      };
-    }
-    if (method === "notifications/initialized" || method === "initialized") {
-      return { jsonrpc: "2.0", id, result: {} };
-    }
-    if (method === "tools/list") {
-      return {
-        jsonrpc: "2.0",
-        id,
-        result: { tools: ferramentas.map((f) => ({ name: f.nome, description: f.descricao, inputSchema: f.schema })) },
-      };
-    }
-    if (method === "tools/call") {
-      const nome = params?.name as string | undefined;
-      const ferramenta = ferramentas.find((f) => f.nome === nome);
-      if (!ferramenta) return { jsonrpc: "2.0", id, error: { code: -32601, message: `Ferramenta desconhecida: ${nome}` } };
-      const args = (params?.arguments as Record<string, unknown>) || {};
-      const resultado = await ferramenta.executar(args);
-      return { jsonrpc: "2.0", id, result: { content: [{ type: "text", text: JSON.stringify(resultado) }] } };
-    }
-    return { jsonrpc: "2.0", id, error: { code: -32601, message: `Método desconhecido: ${method}` } };
-  } catch (err) {
-    return { jsonrpc: "2.0", id, error: { code: -32000, message: err instanceof Error ? err.message : "Erro interno." } };
-  }
+    if (req.headers.has("origin") && req.headers.get("origin") !== appOrigin()) throw new AuthError("Origem da requisição inválida.", 403);
+    const db = saasDatabase();
+    await consumeRateLimit(db, `integration:ip:${rateLimitClient(req.headers)}`, 180, 60);
+    const codigo = extrairCodigo(req), owner = codigo?.match(CODE_PATTERN)?.[1];
+    if (!owner) throw new AuthError("Código de acesso inválido.", 401);
+    return await withTenantJob(db, owner, async () => {
+      if (!autenticar(codigo)) throw new AuthError("Código de acesso inválido.", 401);
+      await consumeRateLimit(db, `integration:user:${owner}`, 60, 60);
+      const result = await action();
+      if (!(result instanceof Response)) return privateJson(result);
+      const headers = new Headers(result.headers);
+      headers.set("Cache-Control", "private, no-store");
+      headers.set("Referrer-Policy", "no-referrer");
+      return new Response(result.body, { status: result.status, headers });
+    });
+  } catch (error) { return httpError(error); }
+}
+export async function integrationExecutionLimit() {
+  const { db, user } = currentTenant();
+  await consumeRateLimit(db, `integration-execute:user:${user.id}`, 20, 60);
 }

@@ -98,8 +98,9 @@ export function IntegrationDialog({
   },
   body: JSON.stringify({ input: "Sua mensagem" }),
 });
-const { status, output, error } = await resposta.json();
-// status: "completed" | "failed" | "waiting"`,
+const { id, queued } = await resposta.json();
+// Consulte depois: GET ${url}?runId=ID_RECEBIDO
+// Envie o mesmo cabeçalho Authorization.`,
     python: `import requests
 
 resposta = requests.post(
@@ -109,7 +110,9 @@ resposta = requests.post(
     timeout=180,
 )
 dados = resposta.json()
-print(dados["status"], dados["output"])`,
+print(dados["id"], dados["queued"])
+# Consulte depois: GET ${url}?runId=ID_RECEBIDO
+# Envie o mesmo cabeçalho Authorization.`,
     mcp: JSON.stringify(
       {
         mcpServers: {
@@ -147,8 +150,8 @@ print(dados["status"], dados["output"])`,
             <h3>Chave de acesso</h3>
             <p>
               A chave autentica chamadas HTTP e assistentes conectados. Ela dá
-              acesso a todos os fluxos salvos e às aprovações desta
-              instalação; compartilhe somente com sistemas autorizados.
+              acesso aos fluxos publicados, ao histórico de execuções e às
+              aprovações da sua conta; compartilhe somente com sistemas autorizados.
             </p>
             {code ? (
               <div className="generated-code">
@@ -418,8 +421,8 @@ print(dados["status"], dados["output"])`,
           </div>
           <p>
             {tab === "mcp"
-              ? "Cole esta configuração no cliente MCP do seu assistente. Ele passa a listar os fluxos salvos, executar, consultar execuções e responder aprovações."
-              : "A resposta traz status, output, error, demo e version. Confira status: completed, failed ou waiting (aguardando aprovação)."}
+              ? "Cole esta configuração no cliente MCP do seu assistente. Ele passa a listar seus fluxos publicados, enfileirar execuções, consultar resultados e responder aprovações."
+              : "O POST retorna HTTP 202 com id e queued. Consulte o resultado com GET neste mesmo endereço, adicionando ?runId=ID_RECEBIDO e o mesmo Bearer. Enquanto queued for true, a tarefa aguarda na fila; waiting indica aprovação pendente."}
           </p>
           {tab === "dev" && <label className="integration-language">
             Linguagem

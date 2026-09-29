@@ -48,7 +48,8 @@ de 100 MB ou 2.000 anexos por usuário. Remover o fluxo libera os arquivos.
 transformam automaticamente esse link em uma nova imagem de entrada; para outra
 edição, baixe e anexe o resultado à mensagem. No chat incorporado, o download
 exige ticket e vínculo com a conversa que gerou a imagem; veja
-[EMBED-TENANTS.md](EMBED-TENANTS.md). Webhooks e MCP públicos ainda em migração
+[EMBED-TENANTS.md](EMBED-TENANTS.md). MCP/webhook de fluxos retornam o Markdown;
+baixar a URL privada exige a sessão do dono. Os canais WhatsApp/ElevenLabs ainda
 não recebem acesso aos anexos privados.
 
 Não há repetição automática de submissões após resposta incerta. Cancelar

@@ -30,7 +30,11 @@ export async function verifyEmbedBrowser(origin, fixture) {
     const b = await browser.newContext();
     await b.addCookies([{ name: "agentflows_session", value: fixture.tokenB, url: origin, httpOnly: true, sameSite: "Lax" }]);
     const other = await b.newPage();
+    const connections = other.waitForResponse(response => response.url().endsWith("/api/conexoes") && response.request().method() === "GET");
     await other.goto(origin + "/configuracoes");
+    const media = await connections;
+    assert.equal(media.status(), 200);
+    assert.equal((await media.json()).media.some(provider => provider.conectado), false);
     await other.getByText("Sem chave", { exact: true }).first().waitFor();
     assert.equal(await other.getByText("Chave salva", { exact: true }).count(), 0);
     assert.equal((await b.request.get(origin + "/api/flows/" + fixture.flowId + "/embed")).status(), 404);

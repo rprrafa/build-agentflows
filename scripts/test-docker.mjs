@@ -46,7 +46,7 @@ const db = saasDatabase();
 async function request(token, pathname, data, method, publicAccess = false) {
   const response = await fetch('http://127.0.0.1:10000' + pathname, {
     method: method || (data ? 'POST' : 'GET'),
-    headers: { ...(publicAccess ? { authorization: 'Bearer ' + token } : { cookie: 'agentflows_session=' + token }), origin: process.env.APP_URL, 'content-type': 'application/json' },
+    headers: { ...(publicAccess ? { authorization: 'Bearer ' + token } : { cookie: 'agentflows_session=' + token }), origin: process.env.APP_URL, 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
     body: data ? JSON.stringify(data) : undefined,
   });
   return { status: response.status, body: await response.json() };
@@ -144,6 +144,41 @@ try {
     await writeFile('/app/data/docker-test.json', JSON.stringify(fixture), { mode: 0o600 });
     await db.close();
   `);
+  console.log("Docker: checking tenant MCP and queued flow webhook...");
+  await inside(common + `
+    import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+    import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+    const fixture = JSON.parse(await readFile('/app/data/docker-test.json', 'utf8'));
+    const codeA = (await request(fixture.tokenA, '/api/mcp/token', {}, 'POST')).body.codigo;
+    const codeB = (await request(fixture.tokenB, '/api/mcp/token', {}, 'POST')).body.codigo;
+    assert.equal((await fetch('http://127.0.0.1:10000/mcp')).status, 405);
+    const client = new Client({ name: 'docker-test', version: '1.0.0' });
+    try {
+      await client.connect(new StreamableHTTPClientTransport(new URL('http://127.0.0.1:10000/mcp'), { requestInit: { headers: { Authorization: 'Bearer ' + codeA } } }));
+      assert.equal((await client.listTools()).tools.length, 4);
+    } finally { await client.close(); }
+    const call = (code, name, args = {}) => request(code, '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, 'POST', true);
+    const listed = await call(codeA, 'listar_fluxos');
+    assert.equal(listed.status, 200);
+    assert.deepEqual(JSON.parse(listed.body.result.content[0].text).map(f => f.id), [fixture.flowId]);
+    assert.deepEqual(JSON.parse((await call(codeB, 'listar_fluxos')).body.result.content[0].text), []);
+    assert.equal((await request(codeB, '/webhook/flows/' + fixture.flowId, { input: 'Forbidden' }, 'POST', true)).status, 404);
+    const accepted = await request(codeA, '/webhook/flows/' + fixture.flowId, { input: 'Webhook' }, 'POST', true);
+    assert.equal(accepted.status, 202); assert.equal(accepted.body.queued, true);
+    let completed = false;
+    for (let i=0; i<25; i++) {
+      const result = await request(codeA, '/webhook/flows/' + fixture.flowId + '?runId=' + accepted.body.id, undefined, 'GET', true);
+      if (result.body.status === 'completed') { assert.equal(result.body.output, 'Worker completed'); completed = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    assert.ok(completed);
+    const run = await call(codeA, 'consultar_execucao', { id: accepted.body.id });
+    assert.equal(JSON.parse(run.body.result.content[0].text).status, 'completed');
+    assert.equal((await call(codeB, 'consultar_execucao', { id: accepted.body.id })).body.result.isError, true);
+    fixture.integration = { codeA, runId: accepted.body.id };
+    await writeFile('/app/data/docker-test.json', JSON.stringify(fixture), { mode: 0o600 });
+    await db.close();
+  `);
   if (browserPort) {
     const fixture = JSON.parse(await inside("import { readFile } from 'node:fs/promises'; process.stdout.write(await readFile('/app/data/docker-test.json', 'utf8'));"));
     const { verifyEmbedBrowser } = await import("./test-embed-browser.mjs");
@@ -168,7 +203,9 @@ try {
     for (const id of fixture.runs) assert.equal((await request(fixture.tokenA, '/api/runs/' + id)).body.status, 'completed');
     const snapshot = await request(fixture.embed.token, '/api/embed/session?id=' + fixture.embed.sessionId, undefined, 'GET', true);
     assert.equal(snapshot.body.turns[0].output, 'Worker completed');
-    assert.ok((await db.query("SELECT count(*)::int count FROM jobs WHERE status='done'")).rows[0].count >= 11);
+    const integration = await request(fixture.integration.codeA, '/webhook/flows/' + fixture.flowId + '?runId=' + fixture.integration.runId, undefined, 'GET', true);
+    assert.equal(integration.body.status, 'completed');
+    assert.ok((await db.query("SELECT count(*)::int count FROM jobs WHERE status='done'")).rows[0].count >= 12);
     await db.close();
   `);
   const status = (await compose("ps", "--format", "json")).trim().split("\n").map((line) => JSON.parse(line));

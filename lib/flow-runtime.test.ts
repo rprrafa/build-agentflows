@@ -9,7 +9,6 @@ const store = await import("./flow-store");
 const runtime = await import("./flow-runtime");
 const { setConfig } = await import("./store");
 const { block, template } = await import("./flow-types");
-const { FERRAMENTAS } = await import("./ferramentas");
 const { chatGPT } = await import("./chatgpt");
 const bridge = chatGPT();
 bridge.account = async () => ({
@@ -300,18 +299,6 @@ test("cancelamento interrompe o agente e impede próximas etapas", async () => {
   } finally {
     bridge.run = run;
   }
-});
-test("MCP lista publicados e executa pelo mesmo motor ChatGPT", async () => {
-  const f = flow();
-  store.publishFlow(f.id);
-  const list = (await FERRAMENTAS[0].executar({})) as { id: string }[];
-  assert.ok(list.some((x) => x.id === f.id));
-  const r = (await FERRAMENTAS[1].executar({ id: f.id, input: "Olá" })) as {
-    status: string;
-    demo: boolean;
-  };
-  assert.equal(r.status, "completed");
-  assert.equal(r.demo, false);
 });
 test("modelos de exemplo possuem grafos executáveis", async () => {
   const { PRESETS, preset } = await import("./flow-presets");

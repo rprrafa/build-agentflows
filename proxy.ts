@@ -11,7 +11,7 @@ function rotaPublica(pathname: string, metodo: string): boolean {
   // Embed APIs authenticate signed, scoped tickets; no admin cookie crosses origins.
   if (pathname === "/embed.js" || /^\/embed\/[a-zA-Z0-9-]+$/.test(pathname)) return true;
   if (pathname === "/api/embed/token" || pathname === "/api/embed/session" || pathname === "/api/embed/attachments" || /^\/api\/embed\/attachments\/[a-zA-Z0-9-]+$/.test(pathname)) return true;
-  if (pathname === "/mcp") return metodo === "POST";
+  if (pathname === "/mcp") return metodo === "POST" || metodo === "GET";
   if (pathname === "/api/health") return true;
   if (pathname === "/conta" || pathname === "/entrar") return true;
   if (pathname === "/icon.svg") return true;

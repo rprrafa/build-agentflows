@@ -103,8 +103,11 @@ uma vaga por usuário, com duas tarefas simultâneas globalmente.
 
 O chat incorporado usa tickets vinculados ao proprietário e à conversa, anexos
 privados e a mesma fila dos fluxos. Veja [EMBED-TENANTS.md](EMBED-TENANTS.md).
-Webhooks e MCP ainda estão em migração para autenticação por proprietário.
-Não habilite essas integrações em produção até concluir as pendências de
+MCP e o webhook de fluxos também usam chave privada da conta e a fila compartilhada;
+o POST HTTP retorna 202 e o resultado é consultado pelo identificador da execução.
+Veja [INTEGRATION-TENANTS.md](INTEGRATION-TENANTS.md).
+Os webhooks de WhatsApp e ElevenLabs ainda estão em migração. Não habilite esses
+canais em produção até concluir as pendências de
 [SAAS-PLAN.md](SAAS-PLAN.md). Os módulos herdados de formulários públicos,
 rotinas e histórico genérico de resultados foram removidos por não terem
 consumidores neste produto. A tela Execuções continua disponível por usuário.

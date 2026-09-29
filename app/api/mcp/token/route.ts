@@ -1,16 +1,11 @@
-// Gera, mostra o estado e revoga o código de acesso usado pelo endpoint MCP (app/mcp/route.ts).
 import { codigoAtivo, codigoMascarado, gerarCodigo, revogarCodigo } from "@/lib/mcp";
-
-export async function GET() {
-  return Response.json({ ativo: Boolean(codigoAtivo()), mascarado: codigoMascarado() });
+import { requestApi } from "@/lib/flow-api";
+export async function GET(req: Request) {
+  return requestApi(req, () => ({ ativo: Boolean(codigoAtivo()), mascarado: codigoMascarado() }));
 }
-
-export async function POST() {
-  const codigo = gerarCodigo();
-  return Response.json({ codigo });
+export async function POST(req: Request) {
+  return requestApi(req, () => ({ codigo: gerarCodigo() }));
 }
-
-export async function DELETE() {
-  revogarCodigo();
-  return Response.json({ ok: true });
+export async function DELETE(req: Request) {
+  return requestApi(req, () => { revogarCodigo(); return { ok: true }; });
 }

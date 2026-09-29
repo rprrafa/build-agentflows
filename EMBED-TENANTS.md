@@ -78,6 +78,6 @@ jornada verifica configurações A/B, preview em iframe, envio pela fila, recarg
 desktop e celular, sem serviços pagos. Capturas ficam em
 `/tmp/agentflows-embed-desktop.png` e `/tmp/agentflows-embed-mobile.png`.
 
-Webhooks e MCP públicos, a cifragem da sessão ChatGPT e os demais repositórios
+Webhooks de WhatsApp/ElevenLabs, a cifragem da sessão ChatGPT e os demais repositórios
 legados ainda têm pendências em `SAAS-PLAN.md`; esta migração não encerra a
 validação da aplicação inteira para abertura do beta.

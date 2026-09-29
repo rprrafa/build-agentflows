@@ -1,31 +1,21 @@
-import { autenticar, extrairCodigo, limiteExcedido } from "@/lib/mcp";
-import { startRun } from "@/lib/flow-runtime";
-import { api, body } from "@/lib/flow-api";
-export async function POST(
-  req: Request,
-  c: { params: Promise<{ id: string }> },
-) {
-  const code = extrairCodigo(req);
-  if (!autenticar(code))
-    return Response.json(
-      { error: "Código de acesso inválido." },
-      { status: 401 },
-    );
-  if (limiteExcedido(code!))
-    return Response.json(
-      { error: "Aguarde um minuto antes de tentar novamente." },
-      { status: 429 },
-    );
-  return api(async () => {
+import { integrationApi } from "@/lib/mcp";
+import { enqueueIntegrationRun, executionSummary, integrationId } from "@/lib/ferramentas";
+import { body } from "@/lib/flow-api";
+import { privateJson } from "@/lib/saas-http";
+import { getTenantFlow, getTenantRun } from "@/lib/tenant-flows";
+import { FlowError } from "@/lib/flow-store";
+type Context = { params: Promise<{ id: string }> };
+export async function POST(req: Request, c: Context) {
+  return integrationApi(req, async () => {
     const b = await body(req);
-    const r = await startRun((await c.params).id, b.input, true);
-    return {
-      id: r.id,
-      status: r.status,
-      output: r.output,
-      error: r.error,
-      demo: r.demo,
-      version: r.version,
-    };
+    return privateJson(await enqueueIntegrationRun((await c.params).id, b.input), { status: 202 });
+  });
+}
+export async function GET(req: Request, c: Context) {
+  return integrationApi(req, async () => {
+    const flow = await getTenantFlow(integrationId((await c.params).id));
+    const run = await getTenantRun(integrationId(new URL(req.url).searchParams.get("runId")));
+    if (run.flowId !== flow.id) throw new FlowError("Execução não encontrada.", 404);
+    return executionSummary(run);
   });
 }

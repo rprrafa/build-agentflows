@@ -74,6 +74,18 @@ sem erros (um aviso preexistente no avatar). Docker passou com dois workers,
 chat público, isolamento e volumes. Navegador passou com contas A/B, preview em
 iframe, envio, recarga e layouts desktop/celular, usando serviços locais.
 
+MCP público e webhook de fluxos migrados: chave cifrada da conta, rotação e
+revogação independentes, autenticação antes das ferramentas e contadores
+persistidos. Execução e aprovação usam a fila compartilhada; HTTP retorna 202
+com consulta por ID. O SDK MCP substitui a implementação manual de protocolo.
+Detalhes em [INTEGRATION-TENANTS.md](INTEGRATION-TENANTS.md).
+Validação: **288 testes gerais e 84 no PostgreSQL servidor**, incluindo o cliente
+MCP oficial e acesso A/B aos handlers. Build passou; lint sem erros, com o mesmo
+aviso preexistente do avatar. Docker passou com cliente MCP oficial pela rede,
+webhook enfileirado, contas A/B, worker e consulta após recriar containers.
+Navegador passou novamente em desktop/celular. WhatsApp/ElevenLabs ainda exigem
+migração dos canais.
+
 ## Histórico e inventário técnico (em revisão após a mudança de direção)
 
 Etapa de imagens validada com **280 testes gerais e 57 no PostgreSQL servidor**,
@@ -96,7 +108,8 @@ de compatibilidade existentes serão removidos na próxima etapa. **O modo SaaS 
 não está pronto para produção**: autenticação e biblioteca de fluxos já usam
 PostgreSQL, assim como configurações, credenciais, anexos privados e conhecimento.
 O motor privado, o chat incorporado e a fila/worker já usam os repositórios por
-usuário; webhooks e MCP públicos ainda estão pendentes. Esses caminhos não podem cair no SQLite global:
+usuário. MCP público e webhook de fluxos usam Bearer da conta e a fila comum;
+WhatsApp/ElevenLabs ainda estão pendentes. Esses caminhos não podem cair no SQLite global:
 o armazenamento legado falha explicitamente quando há contexto SaaS ou
 `DATABASE_URL`. Não liberar o beta enquanto houver funcionalidades pendentes.
 
@@ -316,7 +329,8 @@ repositórios, incluindo Server Components e workers; o proxy sozinho não basta
 | FAISS e bancos vetoriais/record managers externos | Namespaces por usuário/base/geração; verificar conexão/credencial do dono; limpeza nunca alcança outra conta. |
 | Impressão e histórico de execuções | Páginas e APIs usam `runs` por usuário. O histórico genérico `resultados` foi removido. |
 | Embed settings/sessions/commands/requests | Migrados com ticket, origem, fluxo e dono vinculados; jobs usam a fila comum. Polling, anexos e aprovações não cruzam contas. |
-| Webhooks WhatsApp/ElevenLabs/flows e MCP | Endereço/token por usuário ou instalação; resolver dono antes de ler configurações, validar segredo e aplicar limites. |
+| Webhook de fluxos e MCP | Migrados: Bearer cifrado por conta, validação do dono, rate limit persistido e fila compartilhada. |
+| Webhooks WhatsApp/ElevenLabs | Pendentes: endereço/token por usuário, validação antes de ler configurações, eventos deduplicados e entrega pelo worker. |
 | ChatGPT/Codex e caches MCP/modelos | Remover singletons globais de conta/conexão; diretórios e caches por usuário, credencial e serviço. |
 
 Esquema das entidades: manter IDs públicos existentes e mover JSON `body` para
@@ -332,7 +346,7 @@ devem impedir referências cruzadas mesmo quando um caller passar um ID errado.
    propagação de cancelamento já estão implementados. Auditar também
    acesso de conexões configuráveis à rede interna da instalação (HTTP e drivers
    SQL) e capacidade acumulada de vetores antes do beta.
-2. Concluir a auditoria do contexto de execuções, webhooks, MCP e
+2. Concluir a auditoria do contexto de execuções, webhooks de WhatsApp/ElevenLabs e
    todas as Server Components/APIs do inventário acima. Testar usuários A/B com
    tentativas de acesso cruzado por IDs, arquivos e tokens públicos. Cifrar também
    a sessão ChatGPT persistida; diretórios privados sozinhos não substituem cifragem.
