@@ -700,20 +700,21 @@ test("Custom Document Loader executa em sandbox, valida resultado e encerra o am
   assert.match(code, /const input = \{"topic":"help"\}/);
   assert.doesNotMatch(code, /e2b-secret/);
 });
-test("rotas validam entrada, preservam multipart e não revelam chaves", async () => {
+test("rotas validam entrada, preservam multipart e não revelam chaves", async (t) => {
+  const tenant = await (await import("../scripts/tenant-test-context")).createTenantTestContext(); t.after(tenant.close);
   const root = await import("../app/api/knowledge/route");
   const detail = await import("../app/api/knowledge/[id]/route");
   const sourcesRoute = await import("../app/api/knowledge/[id]/sources/route");
-  const invalid = await root.POST(
-    new Request(url, { method: "POST", body: JSON.stringify({ name: "" }) }),
-  );
+  const invalid = await tenant.connect(() => root.POST(
+    tenant.request("/api/knowledge", { method: "POST", body: JSON.stringify({ name: "" }) }),
+  ));
   assert.equal(invalid.status, 400);
-  const response = await root.POST(
-    new Request(url, {
+  const response = await tenant.connect(() => root.POST(
+    tenant.request("/api/knowledge", {
       method: "POST",
       body: JSON.stringify({ name: "Base por API" }),
     }),
-  );
+  ));
   const b = await response.json();
   const form = new FormData();
   form.set(
@@ -727,22 +728,22 @@ test("rotas validam entrada, preservam multipart e não revelam chaves", async (
     }),
   );
   form.append("files", new File(["Reembolso em sete dias"], "help.txt"));
-  const saved = await sourcesRoute.POST(
-    new Request(url, { method: "POST", body: form }),
+  const saved = await tenant.connect(() => sourcesRoute.POST(
+    tenant.request("/api/knowledge", { method: "POST", body: form }),
     { params: Promise.resolve({ id: b.id }) },
-  );
+  ));
   assert.equal(saved.status, 200);
   const source = await saved.json();
   assert.deepEqual(source.fileNames, ["help.txt"]);
-  await index.processKnowledgeSource(b.id, source.id);
-  assert.match(store.listKnowledgeChunks(b.id)[0].pageContent, /sete dias/);
-  const read = await detail.GET(new Request(url), {
+  await tenant.asTenant(() => import("./tenant-knowledge-index").then((m) => m.processKnowledgeSource(b.id, source.id)));
+  assert.match((await tenant.asTenant(() => import("./tenant-knowledge").then((m) => m.listKnowledgeChunks(b.id))))[0].pageContent, /sete dias/);
+  const read = await tenant.connect(() => detail.GET(tenant.request("/api/knowledge"), {
     params: Promise.resolve({ id: b.id }),
-  });
+  }));
   const data = await read.json();
   assert.equal(data.sources.length, 1);
   assert.equal(data.sources[0].config.data, undefined);
-  assert.equal(read.headers.get("cache-control"), "no-store");
+  assert.match(read.headers.get("cache-control")!, /private, no-store/);
 });
 test("OpenRouter recebe os trechos e o retorno das referências permanece opcional", async (t) => {
   const { setConfig } = await import("./store");

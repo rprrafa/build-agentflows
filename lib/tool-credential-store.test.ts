@@ -121,11 +121,12 @@ test("motor do Agente usa a credencial salva no cartão e expõe só a ferrament
   finally { globalThis.fetch = original; }
 });
 
-test("API cria e lista credenciais sem incluir chaves na resposta", async () => {
-  const response = await POST(new Request("http://localhost/api/tool-credentials", { method: "POST", body: JSON.stringify({ name: "Via API", provider: "serper", fields: { TOOL_SERPER_KEY: "segredo-api" } }) }));
+test("API cria e lista credenciais sem incluir chaves na resposta", async (t) => {
+  const tenant = await (await import("../scripts/tenant-test-context")).createTenantTestContext(); t.after(tenant.close);
+  const response = await tenant.connect(() => POST(tenant.request("/api/tool-credentials", { method: "POST", body: JSON.stringify({ name: "Via API", provider: "serper", fields: { TOOL_SERPER_KEY: "segredo-api" } }) })));
   assert.equal(response.status, 200);
   const created = await response.json(); assert.ok(created.id); assert.ok(!JSON.stringify(created).includes("segredo-api"));
-  const list = await GET(new Request("http://localhost/api/tool-credentials?provider=serper"));
+  const list = await tenant.connect(() => GET(tenant.request("/api/tool-credentials?provider=serper")));
   assert.equal(list.status, 200); const data = await list.json(); assert.ok(data.some((c: { id: string }) => c.id === created.id));
   assert.ok(!JSON.stringify(data).includes("segredo-api"));
 });

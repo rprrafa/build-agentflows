@@ -12,7 +12,8 @@ const { serviceToken } = await import("./tool-services");
 const api = await import("../app/api/tools/route");
 test.after(() => rmSync(dir, { recursive: true, force: true }));
 
-test("catálogo inclui as 24 ferramentas pedidas e compartilha a credencial sem expor segredos", async () => {
+test("catálogo inclui as 24 ferramentas pedidas e compartilha a credencial sem expor segredos", async (t) => {
+  const tenant = await (await import("../scripts/tenant-test-context")).createTenantTestContext(); t.after(tenant.close);
   const expected = ["BraveSearch API", "Browserless MCP", "Calculator", "Code Interpreter by E2B", "Exa Search", "Gmail", "Google Calendar", "Google Custom Search", "Google Drive", "Google Sheets", "Microsoft Outlook", "Microsoft Teams", "OpenAPI Toolkit", "Read File", "Request Get", "Request Post", "SearchApi", "SearXNG", "Serp API", "Serper", "Slack MCP", "Tavily", "Web Browser", "Write File"];
   const labels = builtinTools().map((t) => t.label);
   for (const label of expected) assert.ok(labels.includes(label), label);
@@ -24,7 +25,7 @@ test("catálogo inclui as 24 ferramentas pedidas e compartilha a credencial sem 
   assert.deepEqual(a.map((t) => t.name), b.map((t) => t.name));
   assert.equal(await a[1].call({ expressao: "6*7" }), "42");
   assert.equal(await b[1].call({ expressao: "2+3" }), "5");
-  const res = await api.PUT(new Request("http://local/api/tools", { method: "PUT", body: JSON.stringify({ campos: { WHATSAPP_PROVEDOR: "zapi" } }) }));
+  const res = await tenant.connect(() => api.PUT(tenant.request("/api/tools", { method: "PUT", body: JSON.stringify({ campos: { WHATSAPP_PROVEDOR: "zapi" } }) })));
   assert.equal(res.status, 400);
 });
 

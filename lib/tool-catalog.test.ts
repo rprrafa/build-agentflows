@@ -41,10 +41,11 @@ test("Agent as a Tool chama somente o fluxo escolhido e o fuso horário é aplic
   const [clock] = await resolveTools(["interno:data_hora"], cards("interno:data_hora", { timezone: "UTC" }));
   assert.equal(JSON.parse(await clock.call({})).fuso, "UTC");
 });
-test("MCP Github e Custom usam a conta escolhida, listam opções e respeitam ações autorizadas", async () => {
+test("MCP Github e Custom usam a conta escolhida, listam opções e respeitam ações autorizadas", async (t) => {
+  const tenant = await (await import("../scripts/tenant-test-context")).createTenantTestContext(); t.after(tenant.close);
   const fetch0 = globalThis.fetch;
-  const credential = saveToolCredential({ name: "Github", provider: "github_mcp", fields: { TOOL_GITHUB_TOKEN: "github-fixture" } });
-  const custom = saveToolCredential({ name: "Custom", provider: "custom_mcp", fields: { TOOL_CUSTOM_MCP_URL: "https://mcp.example/mcp", TOOL_CUSTOM_MCP_TOKEN: "custom-fixture" } });
+  const credential = await tenant.asTenant(() => saveToolCredential({ name: "Github", provider: "github_mcp", fields: { TOOL_GITHUB_TOKEN: "github-fixture" }  }));
+  const custom = await tenant.asTenant(() => saveToolCredential({ name: "Custom", provider: "custom_mcp", fields: { TOOL_CUSTOM_MCP_URL: "https://mcp.example/mcp", TOOL_CUSTOM_MCP_TOKEN: "custom-fixture" }  }));
   globalThis.fetch = async (url, init) => {
     assert.equal(new Headers(init?.headers).get("authorization"), String(url).includes("github") ? "Bearer github-fixture" : "Bearer custom-fixture");
     if (init?.method === "DELETE") return new Response(null, { status: 200 });
@@ -54,13 +55,15 @@ test("MCP Github e Custom usam a conta escolhida, listam opções e respeitam a�
     return Response.json({ jsonrpc: "2.0", id: msg.id, result });
   };
   try {
-    const response = await POST(new Request("http://localhost/api/tools/options", { method: "POST", body: JSON.stringify({ tool: "interno:github_mcp", credentialId: credential.id }) }));
+    const response = await tenant.connect(() => POST(tenant.request("/api/tools/options", { method: "POST", body: JSON.stringify({ tool: "interno:github_mcp", credentialId: credential.id }) })));
     assert.equal(response.status, 200); assert.equal((await response.json()).length, 2);
+    await tenant.asTenant(async () => {
     const resolved = await resolveTools(["interno:github_mcp"], cards("interno:github_mcp", { actions: '["github_mcp_read"]' }, credential.id));
     assert.deepEqual(resolved.map((t) => t.name), ["github_mcp_read"]); assert.match(await resolved[0].call({}), /OK/);
     const [remote] = await resolveTools(["interno:custom_mcp"], cards("interno:custom_mcp", { actions: '["custom_mcp_read"]' }, custom.id)); assert.match(await remote.call({}), /OK/);
     await assert.rejects(() => resolveTools(["interno:github_mcp"], cards("interno:github_mcp", { actions: "[]" }, credential.id)), /Selecione/);
     await assert.rejects(() => resolveTools(["interno:github_mcp"], cards("interno:github_mcp", { actions: '["missing"]' }, credential.id)), /não está mais disponível/);
+    });
   } finally { globalThis.fetch = fetch0; }
 });
 test("Brave e Postgres inicializam os servidores MCP instalados e encerram os processos", async () => {

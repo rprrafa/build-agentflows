@@ -11,8 +11,6 @@ const store = await import("./knowledge-store"),
   creds = await import("./tool-credential-store"),
   runtime = await import("./knowledge-index");
 const { DEFAULT_INDEX, DEFAULT_SPLITTER } = await import("./knowledge-types");
-const { getConfig, setConfig } = await import("./store");
-const { GET } = await import("../app/api/tool-credentials/route");
 const authorization: string[] = [];
 const server = createServer(async (req, res) => {
   let raw = "";
@@ -165,51 +163,6 @@ test("credencial de outro provedor, destino divergente e mudança de endpoint ex
       }),
     /sem credenciais/,
   );
-});
-test("migração de chaves existentes é idempotente, preserva revisão e outros segredos e aparece na API de credenciais", async () => {
-  const b = store.createKnowledgeBase({ name: "Base anterior" });
-  b.config.embeddings = {
-    provider: "openai",
-    model: "fixture",
-    url,
-    configured: true,
-  };
-  b.revision = 7;
-  store.saveKnowledgeBaseRecord(b);
-  setConfig(
-    `KNOWLEDGE_${b.id}`,
-    JSON.stringify({ embeddingKey: "legacy-key", vectorKey: "vector-secret" }),
-  );
-  const before = creds.listToolCredentials().length;
-  assert.throws(() => store.updateKnowledgeBase(b.id, { name: "" }), /nome/);
-  assert.equal(creds.listToolCredentials().length, before);
-  const persisted = store.knowledgeDb().prepare("SELECT body FROM knowledge_bases WHERE id=?").get(b.id) as { body: string };
-  assert.equal(JSON.parse(persisted.body).config.embeddings.credentialId, undefined);
-  assert.equal(JSON.parse(getConfig(`KNOWLEDGE_${b.id}`)!).embeddingKey, "legacy-key");
-  const response = await GET(
-    new Request("http://localhost/api/tool-credentials"),
-  );
-  assert.equal(response.status, 200);
-  const listed = await response.json();
-  const migrated = store.getKnowledgeBase(b.id);
-  assert.equal(migrated.revision, 7);
-  assert.ok(migrated.config.embeddings.credentialId);
-  assert.ok(
-    listed.some(
-      (c: { id: string }) => c.id === migrated.config.embeddings.credentialId,
-    ),
-  );
-  assert.equal(JSON.stringify(listed).includes("legacy-key"), false);
-  assert.equal(
-    store.indexKnowledgeConfig(b.id).embeddings.apiKey,
-    "legacy-key",
-  );
-  assert.deepEqual(JSON.parse(getConfig(`KNOWLEDGE_${b.id}`)!), {
-    vectorKey: "vector-secret",
-  });
-  store.migrateKnowledgeCredentials();
-  store.getKnowledgeBase(b.id);
-  assert.equal(creds.listToolCredentials().length, before + 1);
 });
 test("a fonte de upload recebe o nome exato do primeiro arquivo, inclusive nomes longos e substituições", () => {
   const b = store.createKnowledgeBase({ name: "Arquivos" });

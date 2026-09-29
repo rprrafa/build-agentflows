@@ -2,13 +2,12 @@ import { editFlow, validateFlowContext, validateFlowMessages } from "@/lib/flow-
 import { FlowError, getFlow } from "@/lib/flow-service";
 import { generateFlow, type GenerationEvent, type GenerationPhase } from "@/lib/flow-generator";
 import { requestApi, body } from "@/lib/flow-api";
-import { saasEnabled } from "@/lib/tenant-context";
 import { tenantJsonStream } from "@/lib/saas-http";
 export async function POST(
   req: Request,
   c: { params: Promise<{ id: string }> },
 ) {
-  if (saasEnabled() && req.headers.get("accept")?.includes("application/x-ndjson")) {
+  if (req.headers.get("accept")?.includes("application/x-ndjson")) {
     return tenantJsonStream(req, async (emit, signal) => {
       const { id } = await c.params;
       if (id !== "new") await getFlow(id);

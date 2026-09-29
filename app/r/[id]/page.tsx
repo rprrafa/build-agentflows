@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
-import { getRun } from "@/lib/flow-store";
 import { RunView } from "@/components/RunView";
 import { cookies } from "next/headers";
-import { saasEnabled, withTenantSession } from "@/lib/tenant-context";
+import { withTenantSession } from "@/lib/tenant-context";
 import { saasDatabase } from "@/lib/saas-db";
 import { SAAS_SESSION_COOKIE } from "@/lib/saas-auth";
 import { getTenantRun } from "@/lib/tenant-flows";
@@ -15,9 +14,7 @@ export default async function Page({
   let run;
   try {
     const { id } = await params;
-    run = saasEnabled()
-      ? await withTenantSession(saasDatabase(), (await cookies()).get(SAAS_SESSION_COOKIE)?.value, () => getTenantRun(id))
-      : getRun(id);
+    run = await withTenantSession(saasDatabase(), (await cookies()).get(SAAS_SESSION_COOKIE)?.value, () => getTenantRun(id));
   } catch {
     notFound();
   }

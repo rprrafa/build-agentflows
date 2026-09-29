@@ -158,16 +158,37 @@ test("salvamento rejeita tipos e limites inválidos; falhas no resumo não são 
   assert.equal(result.outputs.b, undefined);
 });
 
-test("chat conserva o nome entre mensagens e inicia sem histórico após limpar a conversa", async () => {
+test("chat conserva o nome entre mensagens e inicia sem histórico após limpar a conversa", async (t) => {
   const { POST } = await import("../app/api/flows/[id]/run/route");
-  const f = flow(), prompts: string[] = [];
-  bridge.run = async ({ prompt }) => { prompts.push(prompt); return "Resposta do agente"; };
+  const { createTenantTestContext } = await import("../scripts/tenant-test-context");
+  const { createTenantFlow, getTenantRun } = await import("./tenant-flows");
+  const { claimJob } = await import("./saas-jobs");
+  const { runClaimedJob } = await import("./saas-worker");
+  const tenant = await createTenantTestContext();
+  t.after(tenant.close);
+  const nodes = [block("start", "inicio", 0, 0), block("agent", "a", 0, 0), block("llm", "b", 0, 0), block("agent", "c", 0, 0)];
+  const f = await tenant.asTenant(() => createTenantFlow("Memória", false, {
+    name: "Memória", description: "", graph: { nodes, edges: nodes.slice(1).map((node, i) => ({ id: `e${i}`, source: nodes[i].id, target: node.id })) },
+  }));
+  const prompts: string[] = [];
+  const privateBridge = await tenant.asTenant(() => chatGPT());
+  const originalAccount = privateBridge.account, originalRun = privateBridge.run;
+  t.after(() => { privateBridge.account = originalAccount; privateBridge.run = originalRun; });
+  privateBridge.account = bridge.account;
+  privateBridge.run = async ({ prompt }) => { prompts.push(prompt); return "Resposta do agente"; };
   const send = async (input: string, conversationRunIds: string[]) => {
-    const response = await POST(new Request(`http://localhost/api/flows/${f.id}/run`, {
+    const response = await tenant.connect(() => POST(tenant.request(`/api/flows/${f.id}/run`, {
       method: "POST", body: JSON.stringify({ input, conversationRunIds }),
-    }), { params: Promise.resolve({ id: f.id }) });
-    assert.equal(response.status, 200);
-    return response.json();
+    }), { params: Promise.resolve({ id: f.id }) }));
+    assert.equal(response.status, 202);
+    const queued = await response.json();
+    const job = await claimJob(tenant.db);
+    assert.ok(job);
+    assert.equal(job.run_id, queued.id);
+    assert.equal((await runClaimedJob(tenant.db, job)).ok, true);
+    const completed = await tenant.asTenant(() => getTenantRun(queued.id));
+    assert.equal(completed.status, "completed");
+    return completed;
   };
   const first = await send("Meu nome é Rafael", []);
   prompts.length = 0;

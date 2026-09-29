@@ -7,7 +7,7 @@ const dir = mkdtempSync(join(tmpdir(), "agentflows-edit-"));
 process.env.DATA_DIR = dir;
 const { applyFlowPatch, editFlow, validateFlowMessages } = await import("./flow-ai-edit");
 const { block } = await import("./flow-types");
-const { validateGraph, listFlows } = await import("./flow-store");
+const { validateGraph } = await import("./flow-store");
 test.after(() => rmSync(dir, { recursive: true, force: true }));
 function context() {
   const start = block("start", "inicio", -210, 365);
@@ -62,20 +62,21 @@ test("conversa usa proposta anterior como contexto e tenta reparar uma resposta 
   assert.equal(calls, 2); assert.equal(second.graph.nodes[1].data.config.system, "Seja breve e cordial");
   assert.equal(second.graph.nodes[1].data.config.model, "openrouter:custom");
 });
-test("API edita contexto não salvo via JSON ou stream, sem persistir, e rejeita contexto inválido", async () => {
+test("API edita contexto não salvo via JSON ou stream, sem persistir, e rejeita contexto inválido", async (t) => {
+  const tenant = await (await import("../scripts/tenant-test-context")).createTenantTestContext(); t.after(tenant.close);
   const { POST } = await import("../app/api/flows/[id]/generate/route");
   const { chatGPT } = await import("./chatgpt");
-  const bridge = chatGPT(), originalAccount = bridge.account, originalRun = bridge.run;
+  const bridge = await tenant.asTenant(() => chatGPT()), originalAccount = bridge.account, originalRun = bridge.run;
   bridge.account = async () => ({ account: { type: "chatgpt", email: "test@example.com", planType: "plus" }, login: null, error: null });
   bridge.run = async () => '{"summary":"Renomeado.","updates":[{"id":"analista","label":"Atendente"}]}';
-  const send = (accept: string, extra = {}) => POST(new Request("http://localhost/api/flows/new/generate", { method: "POST", headers: { Accept: accept }, body: JSON.stringify({ mode: "edit", prompt: "Renomear agente", context: context(), history: [], ...extra }) }), { params: Promise.resolve({ id: "new" }) });
+  const send = (accept: string, extra = {}) => tenant.connect(() => POST(tenant.request("/api/flows/new/generate", { method: "POST", headers: { Accept: accept }, body: JSON.stringify({ mode: "edit", prompt: "Renomear agente", context: context(), history: [], ...extra }) }), { params: Promise.resolve({ id: "new" }) }));
   try {
     const response = await send("application/json"); assert.equal(response.status, 200);
     assert.equal((await response.json()).graph.nodes[1].data.label, "Atendente");
     const streamed = await send("application/x-ndjson");
     const events = (await streamed.text()).trim().split("\n").map((line) => JSON.parse(line));
     assert.equal(events.at(-1).result.summary, "Renomeado.");
-    assert.equal(listFlows().length, 0);
+    assert.equal((await tenant.asTenant(() => import("./tenant-flows").then((m) => m.listTenantFlows()))).length, 0);
     assert.equal((await send("application/json", { context: null })).status, 400);
     assert.equal((await send("application/json", { mode: "invalid" })).status, 400);
   } finally { bridge.account = originalAccount; bridge.run = originalRun; }

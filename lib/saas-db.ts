@@ -2,6 +2,7 @@ import { Pool, type QueryResultRow } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./db/schema";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 export type Orm = PgDatabase<PgQueryResultHKT, typeof schema>;
 
@@ -13,10 +14,17 @@ export interface Database extends Sql {
   transaction<T>(fn: (sql: Sql) => Promise<T>): Promise<T>;
 }
 
-let instance: (Database & { close(): Promise<void> }) | undefined;
+type Connection = Database & { close(): Promise<void> };
+let instance: Connection | undefined;
+const connections = new AsyncLocalStorage<Connection>();
+
+/** Explicit dependency scope for integration tests and controlled background work. */
+export function withDatabase<T>(db: Connection, action: () => T): T { return connections.run(db, action); }
 
 /** A bounded pool per process; web and workers use the same authoritative database. */
 export function saasDatabase() {
+  const scoped = connections.getStore();
+  if (scoped) return scoped;
   if (instance) return instance;
   if (!process.env.DATABASE_URL) throw new Error("Configure DATABASE_URL para o PostgreSQL.");
   const pool = new Pool({

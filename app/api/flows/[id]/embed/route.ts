@@ -4,7 +4,8 @@ export async function GET(_: Request, c: { params: Promise<{id:string}> }) {
   return api(async () => { const { id } = await c.params; return { settings: embedSettings(id), hasKey: hasEmbedKey(id) }; });
 }
 export async function PUT(req: Request, c: { params: Promise<{id:string}> }) {
-  return api(async () => saveEmbedSettings((await c.params).id, await body(req)));
+  // saveEmbedSettings validates every setting at runtime before persisting it.
+  return api(async () => saveEmbedSettings((await c.params).id, await body(req) as Parameters<typeof saveEmbedSettings>[1]));
 }
 export async function POST(req: Request, c: { params: Promise<{id:string}> }) {
   return api(async () => {

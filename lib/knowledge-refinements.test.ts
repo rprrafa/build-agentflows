@@ -43,12 +43,23 @@ async function baseWithDocs(config?: Partial<IndexConfig>) {
   return store.getKnowledgeBase(b.id);
 }
 
-test("Top K herdado pelo teste, API e agente; alterações de busca não invalidam vetores", async () => {
+test("Top K herdado pelo teste, API e agente; alterações de busca não invalidam vetores", async (t) => {
   let base = await baseWithDocs(); const revision = base.revision;
   base = store.updateKnowledgeBase(base.id, {config:{...base.config,retrieval:{topK:1,minScore:0}}});
   assert.equal(base.revision,revision);assert.equal(base.status,"ready");
   assert.equal((await runtime.queryKnowledge(base.id,"consulta")).length,1);
-  const response=await queryApi(new Request("http://local/query",{method:"POST",body:JSON.stringify({query:"consulta"})}),{params:Promise.resolve({id:base.id})});
+  const tenant = await (await import("../scripts/tenant-test-context")).createTenantTestContext(); t.after(tenant.close);
+  const tenantBase = await tenant.asTenant(async () => {
+    const store = await import("./tenant-knowledge"), runtime = await import("./tenant-knowledge-index");
+    const own = await store.createKnowledgeBase({ name: "Busca privada" });
+    await store.updateKnowledgeBase(own.id, { config: { ...structuredClone(DEFAULT_INDEX), embeddings: { provider: "openai", model: "test", url, apiKey: "fixture" }, retrieval: { topK: 1, minScore: 0 } } });
+    for (const text of ["Documento A", "Documento B"]) {
+      const source = await store.saveKnowledgeSource(own.id, { name: text, loader: "plain", config: { text }, splitter: DEFAULT_SPLITTER, metadata: {} });
+      await runtime.processKnowledgeSource(own.id, source.id);
+    }
+    await runtime.indexKnowledge(own.id); return own;
+  });
+  const response=await tenant.connect(() => queryApi(tenant.request("/api/knowledge/query",{method:"POST",body:JSON.stringify({query:"consulta"})}),{params:Promise.resolve({id:tenantBase.id})}));
   assert.equal(response.status,200);assert.equal((await response.json()).length,1);
   const inherited = await agentKnowledge({knowledgeBase:base.id},new AbortController().signal);
   assert.equal(inherited.hits.length,0);

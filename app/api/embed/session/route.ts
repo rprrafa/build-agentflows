@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     if (b.action === "decision") { await decideEmbedRun(s.id, String(b.runId), b.decision); return { ok: true }; }
     if (b.action === "claim" || b.action === "result") return settleCommand(s.id, String(b.commandId), b.action, b.result, b.success !== false);
     if (b.action === "event") {
-      if (!["page.contextChanged", "page.errorReported", "page.attachmentShared"].includes(b.name)) throw new FlowError("Evento não reconhecido.");
+      if (typeof b.name !== "string" || !["page.contextChanged", "page.errorReported", "page.attachmentShared"].includes(b.name)) throw new FlowError("Evento não reconhecido.");
       const text = JSON.stringify({ name: b.name, data: b.data });
       if (text.length > 8000) throw new FlowError("O contexto da página excedeu o limite.");
       s.context = (s.context + "\n" + text).slice(-16000); putSession(s);

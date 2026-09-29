@@ -32,6 +32,13 @@ Drizzle. Validação: **262 testes gerais e 50 cenários no PostgreSQL servidor*
 Os repositórios e integrações legados restantes ainda precisam ser convertidos;
 a remoção do modo antigo não está concluída.
 
+APIs privadas de fluxos e execuções agora exigem sessão sem fallback por ausência
+de `DATABASE_URL`; criação e retomada passam pela fila. Testes HTTP usam contas,
+sessões e bancos isolados, incluindo memória de conversa executada pelo worker.
+A suíte geral passou 261 testes (removido um teste de importação legada, recurso
+descartado pela diretriz atual); build passou. Restam os repositórios internos e
+as integrações públicas listadas abaixo.
+
 ## Histórico e inventário técnico (em revisão após a mudança de direção)
 
 O objetivo permanece integral: autenticação por senha/Google, Resend, beta fechado,
