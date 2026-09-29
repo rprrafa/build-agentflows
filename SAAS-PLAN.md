@@ -25,6 +25,13 @@ concorrentes. A configuração e os testes não acessam `DATABASE_URL` de produ�
 A suíte geral com Drizzle passou **262/262**. Build e TypeScript passaram; lint
 sem erros, com o aviso preexistente de `<img>` no chat.
 
+Autenticação de conta única removida: `lib/conta.ts`, tela antiga e `/api/conta/*`
+foram excluídos. A interface usa sessão/logout de `/api/auth/*`; o proxy não aceita
+mais `CONTA_DESLIGADA`. A inicialização exige PostgreSQL e aplica as migrações
+Drizzle. Validação: **262 testes gerais e 50 cenários no PostgreSQL servidor**.
+Os repositórios e integrações legados restantes ainda precisam ser convertidos;
+a remoção do modo antigo não está concluída.
+
 ## Histórico e inventário técnico (em revisão após a mudança de direção)
 
 O objetivo permanece integral: autenticação por senha/Google, Resend, beta fechado,

@@ -1,2 +1,2 @@
-import { SaasAccount } from "@/components/SaasAccount";
-export default function Page() { return <SaasAccount mode="forgot-password" />; }
+import { AccountScreen } from "@/components/AccountScreen";
+export default function Page() { return <AccountScreen mode="forgot-password" />; }

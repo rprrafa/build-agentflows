@@ -18,7 +18,7 @@ async function request(action: string, data?: Record<string, unknown>) {
   if (!response.ok) throw new Error(result.error || "Não foi possível concluir. Tente novamente.");
   return result;
 }
-export function SaasAccount({ mode, google = false }: { mode: Mode; google?: boolean }) {
+export function AccountScreen({ mode, google = false }: { mode: Mode; google?: boolean }) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loaded, setLoaded] = useState(mode !== "access");

@@ -60,7 +60,7 @@ function iniciaisDe(nome: string) {
 export function Topbar({ marca, nome, area, status, erro, resumo, usuario, notificacoes, navegacao = NAVEGACAO }: { marca: string; nome: string; area: string; status: Status | null; erro?: boolean; resumo?: string; usuario?: UsuarioTopbar | null; notificacoes?: NotificacaoTopbar[]; navegacao?: ItemNavegacao[] }) {
   const pathname = usePathname();
   const router = useRouter();
-  const sair = () => { fetch("/api/conta/sair", { method: "POST" }).then(() => router.push("/entrar")); };
+  const sair = () => { fetch("/api/auth/logout", { method: "POST" }).then(() => router.push("/entrar")); };
   const [popoverAberto, setPopoverAberto] = useState(false);
   const [sinoAberto, setSinoAberto] = useState(false);
   const [contaAberto, setContaAberto] = useState(false);

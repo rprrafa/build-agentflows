@@ -1,5 +1,4 @@
-// Regras de conta sem nenhum import node:* — pode ser chamado tanto do servidor (lib/conta.ts)
-// quanto de um Client Component (components/conta.tsx). Copie sem alterar ao replicar.
+// Regras de senha compartilhadas pela autenticação e pela tela de conta.
 
 /** Regra da senha, na mesma frase que aparece na tela. */
 export const REGRA_SENHA = "Mínimo de 8 caracteres, com letra maiúscula, minúscula, número e caractere especial.";

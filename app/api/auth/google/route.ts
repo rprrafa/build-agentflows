@@ -1,11 +1,9 @@
 import { beginGoogleLogin } from "@/lib/saas-google";
 import { saasDatabase } from "@/lib/saas-db";
 import { appOrigin } from "@/lib/saas-security";
-import { httpError, privateJson } from "@/lib/saas-http";
+import { httpError } from "@/lib/saas-http";
 import { rateLimitClient } from "@/lib/saas-rate-limit";
-import { saasEnabled } from "@/lib/tenant-context";
 export async function GET(req: Request) {
-  if (!saasEnabled()) return privateJson({ error: "SaaS não configurado." }, { status: 503 });
   try {
     const { url, binding } = await beginGoogleLogin(saasDatabase(), rateLimitClient(req.headers));
     return new Response(null, { status: 303, headers: {

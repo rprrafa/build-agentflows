@@ -369,8 +369,8 @@ export function StudioShell({
   const initials = names.length > 1 ? `${Array.from(names[0])[0]}${Array.from(names.at(-1)!)[0]}`.toLocaleUpperCase("pt-BR") : Array.from(names[0] || "").slice(0,2).join("").toLocaleUpperCase("pt-BR");
   useEffect(() => {
     const controller = new AbortController();
-    void fetch("/api/conta/perfil", { signal: controller.signal, cache: "no-store" }).then(async res => {
-      if (res.ok) { const data = await res.json(); if (!controller.signal.aborted && typeof data.usuario?.nome === "string") setUserName(data.usuario.nome); }
+    void fetch("/api/auth/session", { signal: controller.signal, cache: "no-store" }).then(async res => {
+      if (res.ok) { const data = await res.json(); if (!controller.signal.aborted && typeof data.user?.name === "string") setUserName(data.user.name); }
     }).catch(() => {});
     return () => controller.abort();
   }, []);
@@ -442,7 +442,7 @@ export function StudioShell({
               {accountError && <p role="alert">{accountError}</p>}
               <button type="button" disabled={signingOut} onClick={async () => {
                 setSigningOut(true); setAccountError("");
-                try { await request("/api/conta/sair", "POST"); router.push("/entrar"); router.refresh(); }
+                try { await request("/api/auth/logout", "POST"); router.push("/entrar"); router.refresh(); }
                 catch { setAccountError("Não foi possível sair. Tente novamente."); setSigningOut(false); }
               }}><Icon name="logout" size={16} />{signingOut ? "Saindo…" : "Sair da conta"}</button>
             </div>

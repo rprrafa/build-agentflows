@@ -10,6 +10,7 @@ import { credentialsFor } from "./saas-credentials";
 import { consumeRateLimit } from "./saas-rate-limit";
 import { deliverAuthMail } from "./saas-mail";
 import { beginGoogleLogin, finishGoogleLogin, verifyGoogleIdToken } from "./saas-google";
+import { authAction } from "./saas-http";
 
 // Runs against PGlite or an isolated PostgreSQL server schema.
 const testDb = await createTestDatabase();
@@ -46,6 +47,20 @@ async function verified(email: string) {
   await consumeActionToken(db, await actionToken(email), "verify_email");
   return account;
 }
+
+test("sessão HTTP retorna só o usuário autenticado e logout revoga seu perfil", async () => {
+  const account = await register("profile@example.com");
+  const request = () => new Request("https://app.example.com/api/auth/session", { headers: { cookie: `agentflows_session=${account.token}` } });
+  const response = await authAction(db, request(), "session");
+  const result = await response.json();
+  assert.equal(result.user.name, "Pessoa teste");
+  assert.equal(result.user.id, account.user.id);
+  assert.equal(result.user.password_hash, undefined);
+  assert.match(response.headers.get("cache-control")!, /no-store/);
+  const logout = await authAction(db, new Request("https://app.example.com/api/auth/logout", { method: "POST", headers: { cookie: `agentflows_session=${account.token}`, origin: "https://app.example.com" } }), "logout");
+  assert.equal(logout.status, 200);
+  assert.equal((await (await authAction(db, request(), "session")).json()).user, null);
+});
 async function invite(code: string, limit: number, expires?: string) {
   const id = randomUUID();
   await db.query("INSERT INTO invites(id,code_hash,max_uses,expires_at) VALUES ($1,$2,$3,$4)", [id, hashToken(code), limit, expires || null]);
