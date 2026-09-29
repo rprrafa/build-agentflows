@@ -7,7 +7,7 @@ const dir = mkdtempSync(join(tmpdir(), "agentflows-edit-"));
 process.env.DATA_DIR = dir;
 const { applyFlowPatch, editFlow, validateFlowMessages } = await import("./flow-ai-edit");
 const { block } = await import("./flow-types");
-const { validateGraph } = await import("./flow-store");
+const { validateGraph } = await import("./flow-service");
 test.after(() => rmSync(dir, { recursive: true, force: true }));
 function context() {
   const start = block("start", "inicio", -210, 365);

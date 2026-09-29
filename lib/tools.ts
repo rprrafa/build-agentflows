@@ -2,8 +2,7 @@
 // configurar nada) e as ferramentas de cada servidor MCP conectado em Configurações.
 //
 // Identificadores guardados no bloco: "interno:<nome>" para as prontas e "mcp:<prefixo>:<nome>"
-// para as de um servidor. Um nome sem prefixo (fluxos da primeira versão) é o servidor antigo
-// "Ferramentas". O nome que o modelo vê é sempre o nome curto da ferramenta.
+// para as de um servidor. O modelo recebe o nome curto da ferramenta.
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { AgentTool } from "./chatgpt";
 import { conexaoMCP, servidoresMCP, servidorMCP } from "./conexoes";
@@ -394,12 +393,10 @@ export async function listTools(scope?: string): Promise<ToolGroup[]> {
   }
   return groups;
 }
-export function normalizeToolId(id: string) {
-  return id.includes(":") ? id : `mcp:FERRAMENTAS:${id}`;
-}
 // Ferramentas prontas para o modelo, a partir dos identificadores marcados no bloco.
 export async function resolveTools(ids: string[], cardsValue = ""): Promise<AgentTool[]> {
-  const wanted = [...new Set(ids.map((s) => s.trim()).filter(Boolean).map(normalizeToolId))];
+  const wanted = [...new Set(ids.map((s) => s.trim()).filter(Boolean))];
+  if (wanted.some(id => !/^(?:interno:[^:]+|mcp:[^:]+:.+)$/.test(id))) throw new FlowError("Selecione uma ferramenta vinculada à sua conta.");
   const cards = readToolCards(ids.join(","), cardsValue);
   const out: AgentTool[] = [];
   const byServer = new Map<string, string[]>();

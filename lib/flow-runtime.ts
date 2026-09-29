@@ -28,7 +28,6 @@ import {
 } from "./flow-service";
 import { tenantId } from "./tenant-context";
 import { cancelTenantRun } from "./tenant-flows";
-import { getRun as legacyRun, putRun as legacyPutRun } from "./flow-store";
 import type { Run, Block, Trace } from "./flow-types";
 export function interpolate(text: string, r: Run): string {
   return (text || "").replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_, key: string) => {
@@ -127,7 +126,6 @@ async function agent(n: Block, r: Run, signal: AbortSignal, details: Partial<Tra
         };
         r.trace.push(trace);
         const save = (): void | Promise<void> => {
-          if (!tenantId()) { if (legacyRun(r.id).status === "running") legacyPutRun(r); return; }
           return progress.then(async () => { if ((await getRun(r.id)).status === "running") await putRun(r); });
         };
         const startedSave = save();
@@ -157,7 +155,7 @@ async function agent(n: Block, r: Run, signal: AbortSignal, details: Partial<Tra
 }
 const activeRuns = new Map<string, AbortController>();
 const executionSignals = new AsyncLocalStorage<AbortSignal>();
-const runKey = (id: string) => `${tenantId() || "legacy"}:${id}`;
+const runKey = (id: string) => `${tenantId()}:${id}`;
 function next(r: Run, n: Block, handle?: string) {
   return (
     r.graph.edges.find(
@@ -196,12 +194,12 @@ export async function execute(r: Run, externalSignal?: AbortSignal): Promise<Run
   // Persisted cancellation also works across web/worker processes.
   let checking = false;
   let cancellationCheck = Promise.resolve();
-  const cancellationTimer = r.embedSessionId || tenantId() ? setInterval(() => {
+  const cancellationTimer = setInterval(() => {
     if (checking) return;
     checking = true;
     cancellationCheck = getRun(r.id).then((latest) => { if (latest.status === "cancelled") controller.abort(); })
       .catch(() => controller.abort()).finally(() => { checking = false; });
-  }, 500) : undefined;
+  }, 500);
   try {
     await assertEmbedRun(r);
     while (r.next) {
@@ -447,17 +445,7 @@ export async function prepareResume(id: string, decision: unknown) {
 }
 export async function resumeRun(id: string, decision: unknown) { return execute(await prepareResume(id, decision)); }
 export async function cancelRun(id: string) {
-  if (tenantId()) {
-    const run = await cancelTenantRun(id);
-    activeRuns.get(runKey(id))?.abort();
-    return run;
-  }
-  const r = await getRun(id);
-  if (!["waiting", "running"].includes(r.status))
-    throw new FlowError("Esta execução já terminou.", 409);
+  const run = await cancelTenantRun(id);
   activeRuns.get(runKey(id))?.abort();
-  if (r.embedSessionId) await cancelCommands(id);
-  for (const trace of r.trace) if (trace.status === "running") { trace.status = "failed"; trace.output = "A execução foi cancelada."; trace.ms = Date.now() - Date.parse(trace.at); }
-  r.status = "cancelled";
-  return await putRun(r);
+  return run;
 }

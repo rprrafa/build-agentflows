@@ -139,10 +139,10 @@ export const VECTOR_PROVIDERS = [
 })[];
 export const RECORD_PROVIDERS = [
   {
-    id: "sqlite",
-    name: "SQLite Record Manager",
-    icon: logo("records", "sqlite", "png"),
-    description: "Controle persistente dos registros na própria instalação.",
+    id: "internal",
+    name: "Registro interno",
+    icon: logo("records", "postgres"),
+    description: "Controle dos registros privado para sua conta.",
   },
   {
     id: "postgres",

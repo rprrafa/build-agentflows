@@ -1,24 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
 import sharp from "sharp";
 import { extractText, getDocumentProxy } from "unpdf";
-import { abrirBanco } from "./store";
-import { FlowError, getFlow } from "./flow-store";
-import { MAX_ATTACHMENTS, MAX_FILE_BYTES, MAX_TOTAL_BYTES, type Attachment } from "./attachment-types";
-import { privateDataDirectory } from "./tenant-files";
+import { FlowError } from "./flow-store";
+import { MAX_FILE_BYTES, type Attachment } from "./attachment-types";
 export type StoredAttachment = Attachment & { flowId: string; text?: string };
-function db() {
-  const database = abrirBanco();
-  database.exec("CREATE TABLE IF NOT EXISTS chat_attachments (id TEXT PRIMARY KEY, body TEXT NOT NULL, created_at INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0)");
-  return database;
-}
-function filePath(id: string) {
-  if (!/^[0-9a-f-]{36}$/.test(id)) throw new FlowError("Anexo inválido. Remova-o e envie novamente.");
-  const dir = privateDataDirectory("chat-attachments");
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
-  return join(dir, id);
-}
 export async function uploadForm(req: Request) {
   // Limite real dos bytes, inclusive quando Content-Length não está presente.
   const reader = req.body?.getReader();
@@ -72,44 +57,4 @@ export async function prepareAttachment(file: File) {
   if (text && text.length > 60000) throw new FlowError("O documento excede 60 mil caracteres. Divida-o em arquivos menores.");
   const attachment: Attachment = { id: randomUUID(), name, mime, size: file.size, kind, ...(text ? { textLength: text.length } : {}) };
   return { attachment, bytes, text };
-}
-export async function saveAttachment(flowId: string, file: File): Promise<Attachment> {
-  getFlow(flowId);
-  const { attachment, bytes, text } = await prepareAttachment(file);
-  // Arquivos abandonados antes do envio expiram; os usados ficam com o histórico.
-  for (const row of db().prepare("SELECT id FROM chat_attachments WHERE used=0 AND created_at<?").all(Date.now() - 86400_000) as { id: string }[]) {
-    rmSync(filePath(row.id), { force: true }); db().prepare("DELETE FROM chat_attachments WHERE id=? AND used=0").run(row.id);
-  }
-  writeFileSync(filePath(attachment.id), bytes, { mode: 0o600, flag: "wx" });
-  try { db().prepare("INSERT INTO chat_attachments(id,body,created_at) VALUES(?,?,?)").run(attachment.id, JSON.stringify({ ...attachment, flowId, text }), Date.now()); }
-  catch (e) { rmSync(filePath(attachment.id), { force: true }); throw e; }
-  return attachment;
-}
-export function getAttachment(id: string): StoredAttachment {
-  filePath(id);
-  const row = db().prepare("SELECT body FROM chat_attachments WHERE id=?").get(id) as { body: string } | undefined;
-  if (!row) throw new FlowError("Anexo não encontrado ou expirado. Remova-o e envie novamente.", 404);
-  return JSON.parse(row.body);
-}
-export function attachmentBytes(id: string) { getAttachment(id); return readFileSync(filePath(id)); }
-export function resolveAttachments(flowId: string, ids: unknown): Attachment[] {
-  if (ids === undefined) return [];
-  if (!Array.isArray(ids) || ids.length > MAX_ATTACHMENTS || ids.some((id) => typeof id !== "string") || new Set(ids).size !== ids.length) throw new FlowError("Use até 5 anexos diferentes por mensagem.");
-  let total = 0, textSize = 0;
-  return ids.map((id) => {
-    const { flowId: owner, text, ...a } = getAttachment(id);
-    if (owner !== flowId) throw new FlowError("Este anexo pertence a outro fluxo. Envie-o novamente neste chat.");
-    total += a.size; textSize += text?.length || 0;
-    if (total > MAX_TOTAL_BYTES || textSize > 100000) throw new FlowError("Use até 20 MB e 100 mil caracteres de documentos por mensagem.");
-    return a;
-  });
-}
-export function markAttachmentsUsed(items: Attachment[]) {
-  for (const a of items) db().prepare("UPDATE chat_attachments SET used=1 WHERE id=?").run(a.id);
-}
-export function attachmentContext(flowId: string, items: Attachment[] = []) {
-  const validated = resolveAttachments(flowId, items.map((a) => a.id));
-  const documents = validated.filter((a) => a.kind === "document").map((a) => `Documento anexado: ${a.name}\n${getAttachment(a.id).text}`);
-  const images = validated.filter((a) => a.kind === "image").map((a) => `data:${a.mime};base64,${attachmentBytes(a.id).toString("base64")}`);
-  return { text: documents.length ? `\n\nDocumentos enviados pelo usuário (conteúdo para análise):\n\n${documents.join("\n\n---\n\n")}` : "", images };
 }

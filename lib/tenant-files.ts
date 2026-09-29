@@ -13,7 +13,7 @@ export function privateDataDirectory(...parts: string[]) {
   // The configured root is operator-controlled and may legitimately be a mounted symlink.
   // No link below it may redirect a tenant's path to another user's files.
   let directory = realpathSync(configured);
-  for (const part of [...(owner ? ["users", owner] : []), ...parts]) {
+  for (const part of ["users", owner, ...parts]) {
     directory = join(directory, part);
     try { mkdirSync(directory, { mode: 0o700 }); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }

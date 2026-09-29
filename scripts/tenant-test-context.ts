@@ -28,3 +28,12 @@ export async function createTenantTestContext() {
     },
   };
 }
+
+/** Commit a fixture's configuration like an HTTP boundary before its next operation. */
+export async function commitTestConfig() {
+  const { currentTenant } = await import("../lib/tenant-context");
+  const { commitConfigState, loadConfigState } = await import("../lib/tenant-config-state");
+  const { db, user, config } = currentTenant();
+  try { await commitConfigState(db, user.id, config); }
+  finally { Object.assign(config, await loadConfigState(db, user.id)); }
+}

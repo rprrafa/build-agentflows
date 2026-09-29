@@ -1,7 +1,7 @@
-import * as legacy from "./attachments";
+import { prepareAttachment } from "./attachments";
 import type { StoredAttachment } from "./attachments";
 import { MAX_ATTACHMENTS, MAX_TOTAL_BYTES, type Attachment } from "./attachment-types";
-import { currentTenant, tenantId } from "./tenant-context";
+import { currentTenant } from "./tenant-context";
 import { getTenantFlow } from "./tenant-flows";
 import { FlowError } from "./flow-store";
 import { assertJobLease } from "./saas-job-context";
@@ -13,9 +13,8 @@ function validateId(id: string) {
 }
 
 export async function saveAttachment(flowId: string, file: File, used = false): Promise<Attachment> {
-  if (!tenantId()) return legacy.saveAttachment(flowId, file);
   await getTenantFlow(flowId);
-  const { attachment, bytes, text } = await legacy.prepareAttachment(file);
+  const { attachment, bytes, text } = await prepareAttachment(file);
   const { db, user } = currentTenant();
   await db.transaction(async (sql) => {
     await assertJobLease(sql, user.id);
@@ -34,7 +33,6 @@ export async function saveAttachment(flowId: string, file: File, used = false): 
 }
 
 export async function getAttachment(id: string): Promise<StoredAttachment> {
-  if (!tenantId()) return legacy.getAttachment(id);
   validateId(id);
   const { db, user } = currentTenant();
   const { rows } = await db.query<{ body: StoredAttachment }>("SELECT body FROM attachments WHERE user_id=$1 AND id=$2", [user.id, id]);
@@ -42,7 +40,6 @@ export async function getAttachment(id: string): Promise<StoredAttachment> {
   return rows[0].body;
 }
 export async function attachmentBytes(id: string): Promise<Buffer> {
-  if (!tenantId()) return legacy.attachmentBytes(id);
   validateId(id);
   const { db, user } = currentTenant();
   const { rows } = await db.query<{ data: Uint8Array }>("SELECT data FROM attachment_blobs WHERE user_id=$1 AND id=$2", [user.id, id]);
@@ -50,7 +47,6 @@ export async function attachmentBytes(id: string): Promise<Buffer> {
   return Buffer.from(rows[0].data);
 }
 export async function resolveAttachments(flowId: string, ids: unknown): Promise<Attachment[]> {
-  if (!tenantId()) return legacy.resolveAttachments(flowId, ids);
   await getTenantFlow(flowId);
   if (ids === undefined) return [];
   if (!Array.isArray(ids) || ids.length > MAX_ATTACHMENTS || ids.some((id) => typeof id !== "string") || new Set(ids).size !== ids.length)
@@ -67,7 +63,7 @@ export async function resolveAttachments(flowId: string, ids: unknown): Promise<
   return result;
 }
 export async function markAttachmentsUsed(items: Attachment[]) {
-  if (!tenantId()) return legacy.markAttachmentsUsed(items);
+  currentTenant();
   if (!items.length) return;
   const ids = [...new Set(items.map((item) => item.id))];
   if (ids.length > MAX_ATTACHMENTS) throw new FlowError("Use até 5 anexos diferentes por mensagem.");
@@ -79,7 +75,6 @@ export async function markAttachmentsUsed(items: Attachment[]) {
   });
 }
 export async function attachmentContext(flowId: string, items: Attachment[] = []) {
-  if (!tenantId()) return legacy.attachmentContext(flowId, items);
   const validated = await resolveAttachments(flowId, items.map((item) => item.id));
   const documents: string[] = [], images: string[] = [];
   for (const item of validated) {

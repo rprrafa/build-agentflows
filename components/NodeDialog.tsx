@@ -121,8 +121,6 @@ export function NodeDialog({
       data: { ...d.data, config: { ...d.data.config, [key]: value } },
     }));
   }
-  // Ids antigos (nome sem prefixo) pertencem ao servidor "Ferramentas" da primeira versão.
-  const normalize = (id: string) => (id.includes(":") ? id : "mcp:FERRAMENTAS:" + id);
   // Enter ou o check no título salvam só o nome; o diálogo continua aberto.
   function saveName() {
     const label = draft.data.label.trim();
@@ -316,7 +314,7 @@ export function NodeDialog({
               }))} />
             ) : key === "tool" ? (
               <select
-                value={c[key] ? normalize(c[key]) : ""}
+                value={c[key] || ""}
                 onChange={(e) => change(key, e.target.value)}
               >
                 <option value="">Escolha uma ferramenta</option>
@@ -329,8 +327,8 @@ export function NodeDialog({
                     ))}
                   </optgroup>
                 ))}
-                {c.tool && !known.has(normalize(c.tool)) && (
-                  <option value={normalize(c.tool)}>
+                {c.tool && !known.has(c.tool) && (
+                  <option value={c.tool}>
                     {c.tool.split(":").pop()} · fora do ar
                   </option>
                 )}

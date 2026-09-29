@@ -10,11 +10,10 @@ export function validateToolCards(encoded: string) {
   if (!Array.isArray(cards) || cards.length > 100 || cards.some((card) => !card || typeof card.id !== "string" || !card.id || !["tool", "mcp"].includes(card.kind) || typeof card.target !== "string" ||
     (card.params !== undefined && (!card.params || typeof card.params !== "object" || Array.isArray(card.params) || Object.entries(card.params).some(([key, value]) => !["flowId", "description", "timezone", "actions", "app", "connectedAccountId"].includes(key) || typeof value !== "string" || value.length > 10000))) ||
     (card.params?.actions !== undefined && !validActions(card.params.actions)) ||
-    (card.credentialId !== undefined && (card.kind !== "tool" || typeof card.credentialId !== "string" || !/^(?:default:[a-z_]+|[a-f0-9-]{36})$/.test(card.credentialId))))) throw new Error("Confira as ferramentas e as credenciais selecionadas neste agente.");
+    (card.credentialId !== undefined && (card.kind !== "tool" || typeof card.credentialId !== "string" || !/^[a-f0-9-]{36}$/.test(card.credentialId))))) throw new Error("Confira as ferramentas e as credenciais selecionadas neste agente.");
 }
 export function selectedTools(value: string): string[] {
-  return [...new Set(value.split(",").map((v) => v.trim()).filter(Boolean)
-    .map((v) => v.includes(":") ? v : `mcp:FERRAMENTAS:${v}`))];
+  return [...new Set(value.split(",").map((v) => v.trim()).filter(Boolean))];
 }
 export function belongsToCard(tool: string, card: ToolCard) {
   return !!card.target && (card.kind === "tool" ? tool === card.target : tool.startsWith(`mcp:${card.target}:`));
@@ -29,7 +28,7 @@ export function readToolCards(value: string, encoded = ""): ToolCard[] {
       cards.push({ id: c.id, kind: c.kind, target: c.target, ...(c.params && typeof c.params === "object" && !Array.isArray(c.params) ? { params: Object.fromEntries(Object.entries(c.params).filter(([, value]) => typeof value === "string")) as Record<string, string> } : {}), ...(c.kind === "tool" && typeof c.credentialId === "string" && c.credentialId ? { credentialId: c.credentialId } : {}) });
     }
   } catch {}
-  // Fluxos anteriores ganham um cartão por ferramenta e por servidor, sem mudar permissões.
+  // Agrupa as ações selecionadas por ferramenta e servidor, sem mudar permissões.
   for (const id of selectedTools(value)) {
     const kind = id.startsWith("mcp:") ? "mcp" : "tool";
     const target = kind === "mcp" ? id.split(":")[1] : id;

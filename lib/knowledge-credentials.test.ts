@@ -1,4 +1,8 @@
-import test from "node:test";
+import nodeTest, { type TestContext } from "node:test";
+import { createTenantTestContext, commitTestConfig } from "../scripts/tenant-test-context";
+const testTenant = await createTenantTestContext();
+function test(name: string, action: (t: TestContext) => unknown | Promise<unknown>) { return nodeTest(name, async t => { await testTenant.asTenant(() => action(t)); }); }
+nodeTest.after(testTenant.close);
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,9 +11,9 @@ import { createServer } from "node:http";
 import { once } from "node:events";
 const dir = mkdtempSync(join(tmpdir(), "knowledge-credentials-"));
 process.env.DATA_DIR = dir;
-const store = await import("./knowledge-store"),
+const store = await import("./knowledge-service"),
   creds = await import("./tool-credential-store"),
-  runtime = await import("./knowledge-index");
+  runtime = await import("./knowledge-index-service");
 const { DEFAULT_INDEX, DEFAULT_SPLITTER } = await import("./knowledge-types");
 const authorization: string[] = [];
 const server = createServer(async (req, res) => {
@@ -30,7 +34,7 @@ const server = createServer(async (req, res) => {
 server.listen(0, "127.0.0.1");
 await once(server, "listening");
 const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/v1`;
-test.after(() => {
+nodeTest.after(() => {
   server.close();
   server.closeAllConnections();
   rmSync(dir, { recursive: true, force: true });
@@ -41,7 +45,7 @@ const credential = (name: string) =>
     provider: "embedding_openai",
     fields: { EMBEDDING_OPENAI_KEY: "key-original", EMBEDDING_OPENAI_URL: url },
   });
-test("os quatro provedores guardam chaves cifradas, URLs e resumos sem segredos", () => {
+test("os quatro provedores guardam chaves cifradas, URLs e resumos sem segredos", async () => {
   for (const provider of ["openai", "gemini", "voyage", "ollama"] as const) {
     const key = `EMBEDDING_${provider.toUpperCase()}_KEY`;
     const c = creds.saveToolCredential({
@@ -51,11 +55,9 @@ test("os quatro provedores guardam chaves cifradas, URLs e resumos sem segredos"
     });
     assert.equal(c.configured, true);
     assert.equal(JSON.stringify(c).includes(`secret-${provider}`), false);
-    const raw = store
-      .knowledgeDb()
-      .prepare("SELECT valor FROM config WHERE chave=?")
-      .get(`TOOL_ACCOUNT_${c.id}`) as { valor: string };
-    assert.match(raw.valor, /^v1:/);
+    await commitTestConfig();
+    const raw = (await testTenant.db.query<{ ciphertext: string }>("SELECT ciphertext FROM credentials WHERE user_id=$1 AND key=$2", [testTenant.owner, `TOOL_ACCOUNT_${c.id}`])).rows[0];
+    assert.match(raw.ciphertext, /^v2:/);
     const resolved = creds.resolveEmbeddingCredential(c.id, provider);
     assert.ok(resolved.url.startsWith("http"));
     assert.equal(
@@ -66,12 +68,13 @@ test("os quatro provedores guardam chaves cifradas, URLs e resumos sem segredos"
 });
 test("uma credencial atende duas bases, gira a chave na execução e não pode ser excluída enquanto vinculada", async () => {
   const c = credential("Compartilhada");
+  await commitTestConfig();
   const bases = [
-    store.createKnowledgeBase({ name: "Equipe A" }),
-    store.createKnowledgeBase({ name: "Equipe B" }),
+    (await store.createKnowledgeBase({ name: "Equipe A" })),
+    (await store.createKnowledgeBase({ name: "Equipe B" })),
   ];
   for (const b of bases) {
-    const configured = store.updateKnowledgeBase(b.id, {
+    const configured = (await store.updateKnowledgeBase(b.id, {
       config: {
         ...structuredClone(DEFAULT_INDEX),
         embeddings: {
@@ -81,20 +84,20 @@ test("uma credencial atende duas bases, gira a chave na execução e não pode s
           credentialId: c.id,
         },
       },
-    });
+    }));
     assert.equal(configured.config.embeddings.apiKey, undefined);
-    assert.equal(store.getKnowledgeSecrets(b.id).embeddingKey, undefined);
-    const source = store.saveKnowledgeSource(b.id, {
+    assert.equal((await store.getKnowledgePrivate(b.id, "base")).embeddingKey, undefined);
+    const source = (await store.saveKnowledgeSource(b.id, {
       name: "Manual",
       loader: "plain",
       config: { text: "Política de entrega." },
       splitter: DEFAULT_SPLITTER,
       metadata: {},
-    });
+    }));
     await runtime.processKnowledgeSource(b.id, source.id);
     await runtime.indexKnowledge(b.id);
   }
-  assert.throws(() => creds.deleteToolCredential(c.id), /base de conhecimento/);
+  await assert.rejects(async () => { creds.deleteToolCredential(c.id); await commitTestConfig(); }, /base de conhecimento/);
   creds.saveToolCredential(
     { name: c.name, fields: { EMBEDDING_OPENAI_KEY: "key-rotated" } },
     c.id,
@@ -107,9 +110,10 @@ test("uma credencial atende duas bases, gira a chave na execução e não pode s
   creds.deleteToolCredential(c.id);
   assert.throws(() => creds.getToolCredential(c.id), /não existe/);
 });
-test("credencial de outro provedor, destino divergente e mudança de endpoint exigem correção explícita", () => {
-  const b = store.createKnowledgeBase({ name: "Validação" }),
+test("credencial de outro provedor, destino divergente e mudança de endpoint exigem correção explícita", async () => {
+  const b = (await store.createKnowledgeBase({ name: "Validação" })),
     c = credential("Validação");
+  await commitTestConfig();
   const config = {
     ...structuredClone(DEFAULT_INDEX),
     embeddings: {
@@ -119,27 +123,27 @@ test("credencial de outro provedor, destino divergente e mudança de endpoint ex
       credentialId: c.id,
     },
   };
-  assert.throws(
-    () =>
-      store.updateKnowledgeBase(b.id, {
+  await assert.rejects(
+    async () =>
+      (await store.updateKnowledgeBase(b.id, {
         config: {
           ...config,
           embeddings: { ...config.embeddings, provider: "gemini" },
         },
-      }),
+      })),
     /não pertence/,
   );
-  assert.throws(
-    () =>
-      store.updateKnowledgeBase(b.id, {
+  await assert.rejects(
+    async () =>
+      (await store.updateKnowledgeBase(b.id, {
         config: {
           ...config,
           embeddings: { ...config.embeddings, url: "https://other.example" },
         },
-      }),
+      })),
     /endereço/,
   );
-  store.updateKnowledgeBase(b.id, { config });
+  (await store.updateKnowledgeBase(b.id, { config }));
   creds.saveToolCredential(
     {
       name: c.name,
@@ -147,8 +151,8 @@ test("credencial de outro provedor, destino divergente e mudança de endpoint ex
     },
     c.id,
   );
-  assert.throws(
-    () => store.indexKnowledgeConfig(b.id),
+  await assert.rejects(
+    async () => (await store.indexKnowledgeConfig(b.id)),
     /endereço da credencial foi alterado/,
   );
   assert.throws(
@@ -164,8 +168,8 @@ test("credencial de outro provedor, destino divergente e mudança de endpoint ex
     /sem credenciais/,
   );
 });
-test("a fonte de upload recebe o nome exato do primeiro arquivo, inclusive nomes longos e substituições", () => {
-  const b = store.createKnowledgeBase({ name: "Arquivos" });
+test("a fonte de upload recebe o nome exato do primeiro arquivo, inclusive nomes longos e substituições", async () => {
+  const b = (await store.createKnowledgeBase({ name: "Arquivos" }));
   const name = `${"documento".repeat(15)}.txt`;
   const input = {
     name: "não deve ser usado",
@@ -174,16 +178,16 @@ test("a fonte de upload recebe o nome exato do primeiro arquivo, inclusive nomes
     splitter: DEFAULT_SPLITTER,
     metadata: {},
   };
-  const source = store.saveKnowledgeSource(b.id, input, [
+  const source = (await store.saveKnowledgeSource(b.id, input, [
     { name, data: Buffer.from("Documento").toString("base64") },
-  ]);
+  ]));
   assert.equal(source.name, name);
   assert.equal(
-    store.saveKnowledgeSource(b.id, input, undefined, source.id).name,
+    (await store.saveKnowledgeSource(b.id, input, undefined, source.id)).name,
     name,
   );
   assert.equal(
-    store.saveKnowledgeSource(
+    (await store.saveKnowledgeSource(
       b.id,
       input,
       [
@@ -193,7 +197,7 @@ test("a fonte de upload recebe o nome exato do primeiro arquivo, inclusive nomes
         },
       ],
       source.id,
-    ).name,
+    )).name,
     "Novo.txt",
   );
 });

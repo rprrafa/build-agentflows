@@ -585,37 +585,26 @@ export class ChatGPTBridge {
   get busy() { return this.active || !!this.closing || this.turns.size > 0 || this.pending.size > 0 || !!this.login; }
 }
 const globalChat = globalThis as typeof globalThis & {
-  agentflowsChatGPT?: ChatGPTBridge;
-  agentflowsChatGPTRevision?: string;
   agentflowsChatGPTTenants?: Map<string, { bridge: ChatGPTBridge; touched: number }>;
 };
 export function chatGPT(): ChatGPTBridge {
   const owner = tenantId();
-  if (owner) {
-    const clients = globalChat.agentflowsChatGPTTenants ??= new Map();
-    for (const [key, entry] of clients) {
-      if (!entry.bridge.busy && Date.now() - entry.touched > 15 * 60_000) {
-        entry.bridge.close(); clients.delete(key);
-      }
+  const clients = globalChat.agentflowsChatGPTTenants ??= new Map();
+  for (const [key, entry] of clients) {
+    if (!entry.bridge.busy && Date.now() - entry.touched > 15 * 60_000) {
+      entry.bridge.close(); clients.delete(key);
     }
-    let entry = clients.get(owner);
-    if (!entry) {
-      if (clients.size >= 4) {
-        const idle = [...clients].filter(([, value]) => !value.bridge.busy).sort((a, b) => a[1].touched - b[1].touched)[0];
-        if (!idle) throw new Error("Todas as conexões ChatGPT estão ocupadas. Aguarde e tente novamente.");
-        idle[1].bridge.close(); clients.delete(idle[0]);
-      }
-      entry = { bridge: new ChatGPTBridge(), touched: Date.now() };
-      clients.set(owner, entry);
+  }
+  let entry = clients.get(owner);
+  if (!entry) {
+    if (clients.size >= 4) {
+      const idle = [...clients].filter(([, value]) => !value.bridge.busy).sort((a, b) => a[1].touched - b[1].touched)[0];
+      if (!idle) throw new Error("Todas as conexões ChatGPT estão ocupadas. Aguarde e tente novamente.");
+      idle[1].bridge.close(); clients.delete(idle[0]);
     }
-    entry.touched = Date.now();
-    return entry.bridge;
+    entry = { bridge: new ChatGPTBridge(), touched: Date.now() };
+    clients.set(owner, entry);
   }
-  // O hot reload preserva globais: descarte processos iniciados com o host desativado.
-  if (globalChat.agentflowsChatGPT && globalChat.agentflowsChatGPTRevision !== "tool-host-1") {
-    globalChat.agentflowsChatGPT.close();
-    globalChat.agentflowsChatGPT = undefined;
-  }
-  globalChat.agentflowsChatGPTRevision = "tool-host-1";
-  return (globalChat.agentflowsChatGPT ??= new ChatGPTBridge());
+  entry.touched = Date.now();
+  return entry.bridge;
 }

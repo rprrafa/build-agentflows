@@ -14,7 +14,7 @@ export function ToolParameters({ tool, card, credentials, onChange, onSaved }: {
   const [flows, setFlows] = useState<Option[]>([]), [apps, setApps] = useState<Option[]>([]), [accounts, setAccounts] = useState<Option[]>([]), [actions, setActions] = useState<Option[]>([]);
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [query, setQuery] = useState("");
   const generation = useRef(0);
-  const connection = card.credentialId || credentials.find((c) => c.provider === tool.credentialProvider && c.legacy)?.id;
+  const connection = card.credentialId;
   useEffect(() => {
     const timer = setTimeout(() => {
       if (tool.name === "executar_fluxo") request<(Option & { published?: unknown })[]>("/api/flows").then((all) => setFlows(all.filter((flow) => !!flow.published))).catch(() => setError("Não foi possível carregar os fluxos."));

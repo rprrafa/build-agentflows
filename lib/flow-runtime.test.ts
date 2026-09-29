@@ -1,47 +1,52 @@
-import test from "node:test";
+import nodeTest, { type TestContext } from "node:test";
+import { createTenantTestContext } from "../scripts/tenant-test-context";
+const testTenant = await createTenantTestContext();
+function test(name: string, action: (t: TestContext) => unknown | Promise<unknown>) { return nodeTest(name, async t => { await testTenant.asTenant(() => action(t)); }); }
+nodeTest.after(testTenant.close);
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 const dir = mkdtempSync(join(tmpdir(), "agentflows-test-"));
 process.env.DATA_DIR = dir;
-const store = await import("./flow-store");
+const store = await import("./flow-service");
+const { enqueueRun, claimJob, recoverExpiredJobs } = await import("./saas-jobs");
 const runtime = await import("./flow-runtime");
 const { setConfig } = await import("./store");
 const { block, template } = await import("./flow-types");
 const { chatGPT } = await import("./chatgpt");
-const bridge = chatGPT();
+const bridge = await testTenant.asTenant(chatGPT);
 bridge.account = async () => ({
   account: { type: "chatgpt", email: "teste@example.com", planType: "plus" },
   login: null,
   error: null,
 });
 bridge.run = async () => "Resposta ChatGPT simulada no teste";
-test.after(() => rmSync(dir, { recursive: true, force: true }));
-function flow(graph = template()) {
-  const f = store.createFlow("Teste");
-  return store.saveFlow(f.id, { name: f.name, description: "", graph });
+nodeTest.after(() => rmSync(dir, { recursive: true, force: true }));
+async function flow(graph = template()) {
+  const f = (await store.createFlow("Teste"));
+  return (await store.saveFlow(f.id, { name: f.name, description: "", graph }));
 }
-test("primeiro salvamento cria o fluxo completo e falhas não deixam registros", () => {
-  const count = store.listFlows().length;
-  assert.throws(() => store.createSavedFlow({ name: "", description: "", graph: template() }));
-  assert.throws(() => store.createSavedFlow({ name: "Inválido", description: "", graph: { nodes: null, edges: [] } }));
-  assert.equal(store.listFlows().length, count);
+test("primeiro salvamento cria o fluxo completo e falhas não deixam registros", async () => {
+  const count = (await store.listFlows()).length;
+  await assert.rejects(async () => (await store.createSavedFlow({ name: "", description: "", graph: template() })));
+  await assert.rejects(async () => (await store.createSavedFlow({ name: "Inválido", description: "", graph: { nodes: null, edges: [] } })));
+  assert.equal((await store.listFlows()).length, count);
   const graph = { nodes: [block("start", "inicio", 0, 0)], edges: [] };
-  const saved = store.createSavedFlow({ name: " Meu fluxo ", description: "", graph });
+  const saved = (await store.createSavedFlow({ name: " Meu fluxo ", description: "", graph }));
   assert.equal(saved.name, "Meu fluxo");
   assert.equal(saved.graph.nodes.length, 1);
-  assert.deepEqual(store.getFlow(saved.id).graph, graph);
+  assert.deepEqual((await store.getFlow(saved.id)).graph, graph);
   assert.deepEqual(saved.published, saved.graph);
-  assert.equal(store.listFlows().length, count + 1);
-  store.deleteFlow(saved.id);
+  assert.equal((await store.listFlows()).length, count + 1);
+  (await store.deleteFlow(saved.id));
 });
 test("testes e integrações executam o último fluxo salvo como v1", async () => {
-  const f = flow();
+  const f = (await flow());
   assert.ok(f.published, "Salvar também publica o fluxo");
   const g = template();
   g.nodes[2].data.config.text = "Atualizado";
-  store.saveFlow(f.id, { name: "Editado", description: "", graph: g });
+  (await store.saveFlow(f.id, { name: "Editado", description: "", graph: g }));
   const r = await runtime.startRun(f.id, "Olá", true, true);
   assert.equal(r.status, "completed");
   assert.equal(r.version, 1);
@@ -50,8 +55,8 @@ test("testes e integrações executam o último fluxo salvo como v1", async () =
   const draft = await runtime.startRun(f.id, "Olá", false, true);
   assert.equal(draft.output, "Atualizado");
   assert.equal(draft.version, 1);
-  assert.equal(store.publishFlow(f.id).version, 1);
-  store.publishFlow(f.id, false);
+  assert.equal((await store.publishFlow(f.id)).version, 1);
+  (await store.publishFlow(f.id, false));
   await assert.rejects(() => runtime.startRun(f.id, "Olá", true), /Salve/);
 });
 test("grafo inválido recusa IDs repetidos, conexões incompletas e blocos órfãos", () => {
@@ -78,7 +83,7 @@ test("condição respeita saídas e estado compartilhado", async () => {
   condition.data.config.value = "{{state.assunto}}";
   yes.data.config.text = "Prioritário: {{nodes.save}}";
   no.data.config.text = "Normal";
-  const f = flow({
+  const f = (await flow({
     nodes: [start, state, condition, yes, no],
     edges: [
       { id: "1", source: "start", target: "save" },
@@ -86,7 +91,7 @@ test("condição respeita saídas e estado compartilhado", async () => {
       { id: "3", source: "check", target: "yes", sourceHandle: "yes" },
       { id: "4", source: "check", target: "no", sourceHandle: "no" },
     ],
-  });
+  }));
   assert.equal(
     (await runtime.startRun(f.id, "urgente", false, true)).output,
     "Prioritário: urgente",
@@ -108,19 +113,19 @@ test("aprovação persiste e só uma decisão pode retomar o checkpoint", async 
     target: "rejeitada",
     sourceHandle: "no",
   });
-  const f = flow(g);
+  const f = (await flow(g));
   const r = await runtime.startRun(f.id, "Revisar", false, true);
   assert.equal(r.status, "waiting");
-  store.interruptRuns();
-  assert.equal(store.getRun(r.id).status, "waiting");
-  assert.throws(() => store.deleteFlow(f.id), /pendentes/);
+  await recoverExpiredJobs(testTenant.db);
+  assert.equal((await store.getRun(r.id)).status, "waiting");
+  await assert.rejects(async () => (await store.deleteFlow(f.id)), /pendentes/);
   const resumed = await runtime.resumeRun(r.id, "no");
   assert.equal(resumed.status, "completed");
   assert.equal(resumed.output, "Não aprovado");
-  await assert.rejects(() => runtime.resumeRun(r.id, "yes"), /aguardando/);
+  await assert.rejects(() => runtime.resumeRun(r.id, "yes"), /já foi recebida/);
   const again = await runtime.startRun(f.id, "Revisar", false, true);
   assert.equal((await runtime.cancelRun(again.id)).status, "cancelled");
-  await assert.rejects(() => runtime.resumeRun(again.id, "yes"), /aguardando/);
+  await assert.rejects(() => runtime.resumeRun(again.id, "yes"), /já foi recebida/);
 });
 test("repetição tem limite e registro por passagem", async () => {
   const a = block("start", "s", 0, 0),
@@ -128,7 +133,7 @@ test("repetição tem limite e registro por passagem", async () => {
     v = block("state", "v", 0, 0),
     e = block("end", "e", 0, 0);
   v.data.config = { key: "a", value: "{{last}}!" };
-  const f = flow({
+  const f = (await flow({
     nodes: [a, l, v, e],
     edges: [
       { id: "a", source: "s", target: "l" },
@@ -136,7 +141,7 @@ test("repetição tem limite e registro por passagem", async () => {
       { id: "c", source: "v", target: "l" },
       { id: "d", source: "l", target: "e", sourceHandle: "done" },
     ],
-  });
+  }));
   const r = await runtime.startRun(f.id, "x", false, true);
   assert.equal(r.status, "completed");
   assert.equal(r.output, "x!!!");
@@ -145,7 +150,7 @@ test("repetição tem limite e registro por passagem", async () => {
 test("referência ausente falha com diagnóstico e mantém etapas", async () => {
   const g = template();
   g.nodes[2].data.config.text = "{{state.ausente}}";
-  const f = flow(g);
+  const f = (await flow(g));
   const r = await runtime.startRun(f.id, "x", false, true);
   assert.equal(r.status, "failed");
   assert.match(r.error!, /não tem valor/);
@@ -161,7 +166,7 @@ test("OpenRouter só vale para blocos que escolhem um modelo dele; sem fallback"
   };
   setConfig("OPENROUTER_API_KEY", null);
   try {
-    const f = flow();
+    const f = (await flow());
     await assert.rejects(
       () => runtime.startRun(f.id, "Olá"),
       /Conecte o ChatGPT/,
@@ -172,7 +177,7 @@ test("OpenRouter só vale para blocos que escolhem um modelo dele; sem fallback"
     // Bloco com modelo do OpenRouter roda por ele.
     const g = template();
     g.nodes[1].data.config.model = "openrouter:openai/gpt-4.1-mini";
-    const f2 = flow(g);
+    const f2 = (await flow(g));
     let chamado = "";
     globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
       chamado = String(url) + " " + JSON.parse(String(init?.body)).model;
@@ -206,7 +211,7 @@ test("simulação explícita nunca usa ChatGPT ou ferramentas externas", async (
     const g = template();
     g.nodes[1] = block("http", "analista", 0, 0);
     g.nodes[1].data.config.url = "https://example.com";
-    const r = await runtime.startRun(flow(g).id, "Olá", false, true);
+    const r = await runtime.startRun((await flow(g)).id, "Olá", false, true);
     assert.equal(r.status, "completed");
     assert.match(r.output, /Demonstração/);
   } finally {
@@ -217,8 +222,7 @@ test("simulação explícita nunca usa ChatGPT ou ferramentas externas", async (
 test("agente ChatGPT recebe somente ferramentas autorizadas e registra chamadas e texto", async () => {
   const fetch = globalThis.fetch,
     run = bridge.run;
-  setConfig("FERRAMENTAS_URL", "https://tools.example/mcp");
-  setConfig("FERRAMENTAS_CODIGO", "test-code");
+  const server = (await import("./conexoes")).adicionarServidorMCP("Ferramentas", "https://tools.example/mcp", "test-code");
   globalThis.fetch = async (_, init) => {
     const b = JSON.parse(init?.body as string);
     return Response.json({
@@ -249,8 +253,8 @@ test("agente ChatGPT recebe somente ferramentas autorizadas e registra chamadas 
   };
   try {
     const g = template();
-    g.nodes[1].data.config.tools = "buscar";
-    const r = await runtime.startRun(flow(g).id, "Pesquisar");
+    g.nodes[1].data.config.tools = `mcp:${server.prefixo}:buscar`;
+    const r = await runtime.startRun((await flow(g)).id, "Pesquisar");
     assert.equal(r.status, "completed");
     assert.equal(r.demo, false);
     assert.match(r.output, /Resposta final/);
@@ -266,7 +270,7 @@ test("falhas ChatGPT não caem para outro provedor nem para demonstração", asy
     throw Error("Limite da assinatura atingido");
   };
   try {
-    const r = await runtime.startRun(flow().id, "Pesquisar");
+    const r = await runtime.startRun((await flow()).id, "Pesquisar");
     assert.equal(r.status, "failed");
     assert.equal(r.demo, false);
     assert.match(r.error!, /Limite da assinatura/);
@@ -288,10 +292,10 @@ test("cancelamento interrompe o agente e impede próximas etapas", async () => {
       began();
     });
   try {
-    const f = flow();
+    const f = (await flow());
     const pending = runtime.startRun(f.id, "Pesquisar");
     await ready;
-    const r = store.listRuns(f.id)[0];
+    const r = (await store.listRuns(f.id))[0];
     await runtime.cancelRun(r.id);
     const result = await pending;
     assert.equal(result.status, "cancelled");
@@ -305,7 +309,7 @@ test("modelos de exemplo possuem grafos executáveis", async () => {
   for (const p of PRESETS) {
     store.validateGraph(preset(p.id), true);
     const r = await runtime.startRun(
-      flow(preset(p.id)).id,
+      (await flow(preset(p.id))).id,
       "urgente",
       false,
       true,
@@ -313,12 +317,15 @@ test("modelos de exemplo possuem grafos executáveis", async () => {
     assert.ok(["completed", "waiting"].includes(r.status));
   }
 });
-test("reinício interrompe execução ativa e preserva aprovação pendente", async () => {
-  const r = await runtime.startRun(flow().id, "x", false, true);
-  r.status = "running";
-  store.putRun(r);
-  store.interruptRuns();
-  assert.equal(store.getRun(r.id).status, "failed");
+test("reinício interrompe apenas o job cujo lease expirou", async () => {
+  const f = await flow();
+  const queued = await enqueueRun(f.id, "x", false, true);
+  const job = await claimJob(testTenant.db, queued.job.id);
+  assert.ok(job);
+  assert.equal(await recoverExpiredJobs(testTenant.db), 0);
+  await testTenant.db.query("UPDATE jobs SET lease_until=now()-interval '1 second' WHERE id=$1", [job.id]);
+  assert.equal(await recoverExpiredJobs(testTenant.db), 1);
+  assert.equal((await store.getRun(queued.run.id)).status, "failed");
 });
 
 test("LLM sem mensagem recebe a conversa e depois o resultado anterior", async () => {
@@ -332,7 +339,7 @@ test("LLM sem mensagem recebe a conversa e depois o resultado anterior", async (
     { id: "2", source: "analista", target: "revisor" },
     { id: "3", source: "revisor", target: "resposta" },
   ];
-  const f = flow(g);
+  const f = (await flow(g));
   const r = await runtime.startRun(f.id, "Pedido atrasado", false, true);
   assert.equal(r.status, "completed");
   assert.match(r.trace[1].output, /Entrada analisada: Pedido atrasado/);
@@ -356,7 +363,7 @@ test("Mensagem personaliza a chamada da etapa sem iteração extra; last inclui 
       { id: "2", source: "analista", target: "revisor" },
       { id: "3", source: "revisor", target: "resposta" },
     ];
-    const result = await runtime.startRun(flow(graph).id, "Meu pedido", false, false);
+    const result = await runtime.startRun((await flow(graph)).id, "Meu pedido", false, false);
     assert.equal(result.status, "completed");
     assert.equal(prompts.length, 2, "Memória completa não faz chamada extra");
     assert.ok(prompts[0].endsWith("Analise: Meu pedido"));
@@ -379,7 +386,7 @@ test("dois agentes reutilizam a mesma ferramenta com seleção independente e se
     one.data.config.tools = "interno:calculadora,interno:data_hora";
     two.data.config.tools = "interno:calculadora";
     end.data.config.text = "{{last}}";
-    const f = flow({ nodes: [start, one, two, end], edges: [{ id: "1", source: "start", target: "one" }, { id: "2", source: "one", target: "two" }, { id: "3", source: "two", target: "end" }] });
+    const f = (await flow({ nodes: [start, one, two, end], edges: [{ id: "1", source: "start", target: "one" }, { id: "2", source: "one", target: "two" }, { id: "3", source: "two", target: "end" }] }));
     const run = await runtime.startRun(f.id, "Calcule", false, false);
     assert.equal(run.status, "completed");
     assert.equal(run.output, "42");
@@ -396,9 +403,9 @@ test("Agente e LLM terminais entregam a resposta e atualizam variáveis comparti
     first.data.config.stateUpdates = JSON.stringify([{ key: "Resumo", value: "{{nodes.primeiro}}" }, { key: "Anterior", value: "{{fluxo.Resumo}}" }]);
     last.data.config.prompt = "Resumo recebido: {{fluxo.Resumo}}";
     last.data.config.stateUpdates = JSON.stringify([{ key: "Resumo", value: "{{last}}" }]);
-    const f = flow({ nodes: [start, first, last], edges: [{ id: "a", source: "inicio", target: "primeiro" }, { id: "b", source: "primeiro", target: "ultimo" }] });
+    const f = (await flow({ nodes: [start, first, last], edges: [{ id: "a", source: "inicio", target: "primeiro" }, { id: "b", source: "primeiro", target: "ultimo" }] }));
     assert.equal(f.graph.nodes[0].data.label, "Início");
-    store.publishFlow(f.id);
+    (await store.publishFlow(f.id));
     const r = await runtime.startRun(f.id, "Olá", true, true);
     assert.equal(r.status, "completed");
     assert.match(r.output, /Resumo recebido:/);
@@ -418,14 +425,14 @@ test("recusa variáveis desconhecidas, atualizações duplicadas e agentes desco
   g.nodes.push(block("agent", "solto", 0, 0));
   assert.throws(() => store.validateGraph(g, true), /conectados/);
 });
-test("novo fluxo começa somente com Início e salvar preserva o canvas", () => {
-  const f = store.createFlow();
+test("novo fluxo começa somente com Início e salvar preserva o canvas", async () => {
+  const f = (await store.createFlow());
   assert.deepEqual(f.graph.nodes.map((n) => n.data.kind), ["start"]);
   assert.deepEqual(f.graph.edges, []);
   f.graph.nodes[0].position = { x: 123, y: -456 };
   const expected = structuredClone(f.graph);
-  store.saveFlow(f.id, { name: "Meu fluxo", description: "", graph: f.graph });
-  assert.deepEqual(store.getFlow(f.id).graph, expected);
+  (await store.saveFlow(f.id, { name: "Meu fluxo", description: "", graph: f.graph }));
+  assert.deepEqual((await store.getFlow(f.id)).graph, expected);
   assert.deepEqual(f.graph, expected);
 });
 
@@ -443,7 +450,7 @@ test("Agente e LLM pesquisam na web sem configuração, inclusive em fluxos anti
         const start = block("start", "start", 0, 0);
         const model = block(kind, "model", 200, 0);
         if (legacy !== undefined) model.data.config.webSearch = legacy;
-        const f = flow({ nodes: [start, model], edges: [{ id: "edge", source: "start", target: "model" }] });
+        const f = (await flow({ nodes: [start, model], edges: [{ id: "edge", source: "start", target: "model" }] }));
         const run = await runtime.startRun(f.id, "Pesquise", false, false);
         assert.equal(run.status, "completed");
       }
@@ -455,28 +462,28 @@ test("Agente e LLM pesquisam na web sem configuração, inclusive em fluxos anti
 });
 
 
-test("salvar rejeita dados corrompidos sem substituir a configuração em uso", () => {
-  const f = flow();
+test("salvar rejeita dados corrompidos sem substituir a configuração em uso", async () => {
+  const f = (await flow());
   const invalid = template();
   invalid.edges[0].target = "bloco-inexistente";
-  assert.throws(() => store.saveFlow(f.id, { name: "Inválido", description: "", graph: invalid }), /conexão inválida/);
-  assert.deepEqual(store.getFlow(f.id), f);
+  await assert.rejects(async () => (await store.saveFlow(f.id, { name: "Inválido", description: "", graph: invalid })), /conexão inválida/);
+  assert.deepEqual((await store.getFlow(f.id)), f);
 });
 
 test("Início sozinho pode ser salvo e reaberto; somente o teste no chat é bloqueado", async () => {
   const graph = { nodes: [block("start", "inicio", 120, 80)], edges: [] };
-  const f = store.createSavedFlow({ name: "Em construção", description: "", graph });
-  store.saveFlow(f.id, { ...f, graph });
-  assert.deepEqual(store.getFlow(f.id).graph, graph);
+  const f = (await store.createSavedFlow({ name: "Em construção", description: "", graph }));
+  (await store.saveFlow(f.id, { ...f, graph }));
+  assert.deepEqual((await store.getFlow(f.id)).graph, graph);
   await assert.rejects(runtime.startRun(f.id, "Olá", false, true), /apenas o bloco Início.*Adicione e conecte/);
-  assert.deepEqual(store.getFlow(f.id).graph, graph);
+  assert.deepEqual((await store.getFlow(f.id)).graph, graph);
 });
 
 test("conexões incompletas não impedem salvar, mas impedem executar", async () => {
   const graph = template();
   graph.edges = [];
-  const f = store.createSavedFlow({ name: "Em construção", description: "", graph });
-  assert.deepEqual(store.getFlow(f.id).graph, graph);
+  const f = (await store.createSavedFlow({ name: "Em construção", description: "", graph }));
+  assert.deepEqual((await store.getFlow(f.id)).graph, graph);
   await assert.rejects(runtime.startRun(f.id, "Olá", false, true), /Conecte/);
 });
 
@@ -487,11 +494,11 @@ test("salvar atualiza a v1 sem alterar a execução que já aguarda aprovação"
   g.nodes[2].data.config.text = "Antes";
   g.nodes.push(block("end", "no", 0, 0));
   g.edges.push({ id: "no", source: "analista", target: "no", sourceHandle: "no" });
-  const f = flow(g);
+  const f = (await flow(g));
   const pending = await runtime.startRun(f.id, "Revisar", true, true);
   assert.equal(pending.status, "waiting");
   g.nodes[2].data.config.text = "Depois";
-  const saved = store.saveFlow(f.id, { name: f.name, description: "", graph: g });
+  const saved = (await store.saveFlow(f.id, { name: f.name, description: "", graph: g }));
   assert.equal(saved.version, 1);
   assert.deepEqual(saved.published, saved.graph);
   assert.equal((await runtime.resumeRun(pending.id, "yes")).output, "Antes");
@@ -500,44 +507,40 @@ test("salvar atualiza a v1 sem alterar a execução que já aguarda aprovação"
 });
 
 test("fluxos existentes usam v1 e o grafo salvo, preservando a API antiga de publicação", async () => {
-  const { abrirBanco } = await import("./store");
-  const f = flow();
+  const f = (await flow());
   const oldPublished = structuredClone(f.graph);
   f.graph.nodes[2].data.config.text = "Conteúdo salvo";
-  abrirBanco().prepare("UPDATE flows SET body=? WHERE id=?").run(JSON.stringify({ ...f, version: 8, published: oldPublished }), f.id);
-  assert.equal(store.getFlow(f.id).version, 1);
-  assert.deepEqual(store.getFlow(f.id).published, f.graph);
-  assert.equal(store.listFlows().find(item => item.id === f.id)?.version, 1);
+  await testTenant.db.query("UPDATE flows SET body=$3 WHERE user_id=$1 AND id=$2", [testTenant.owner, f.id, JSON.stringify({ ...f, version: 8, published: oldPublished })]);
+  assert.equal((await store.getFlow(f.id)).version, 1);
+  assert.deepEqual((await store.getFlow(f.id)).published, f.graph);
+  assert.equal((await store.listFlows()).find(item => item.id === f.id)?.version, 1);
   const run = await runtime.startRun(f.id, "Olá", true, true);
   assert.equal(run.output, "Conteúdo salvo");
   assert.equal(run.version, 1);
-  assert.equal(store.publishFlow(f.id).version, 1);
+  assert.equal((await store.publishFlow(f.id)).version, 1);
 });
 
 test("chamadas de ferramenta registram início, duração e falha mesmo quando o modelo segue respondendo", async () => {
-  const original = bridge.run;
-  const graph = template(); graph.nodes[1].data.config.tools = "interno:calculadora";
-  const f = flow(graph);
+  const original = bridge.run, fetch0 = globalThis.fetch;
+  const graph = template(); graph.nodes[1].data.config.tools = "interno:ler_pagina,interno:calculadora";
+  const f = await flow(graph);
+  globalThis.fetch = async () => {
+    const running = (await store.listRuns(f.id))[0];
+    assert.equal(running.trace.find(entry => entry.type === "tool")?.status, "running");
+    return new Response("Falha do serviço", { status: 503 });
+  };
   bridge.run = async ({ tools = [], webSearch }) => {
-    assert.equal(webSearch, false, "Busca nativa não substitui as ferramentas escolhidas");
-    const pending = tools[0].call({ expressao: "1/0" });
-    const running = store.listRuns().find((run) => run.flowId === f.id)!;
-    assert.equal(running.trace.find((entry) => entry.type === "tool")?.status, "running");
-    await assert.rejects(() => pending, /não é um número/);
-    const failed = store.getRun(running.id).trace.find((entry) => entry.type === "tool")!;
-    assert.equal(failed.status, "failed");
-    assert.match(failed.output, /não é um número/);
-    assert.ok(failed.ms >= 0);
-    const output = await tools[0].call({ expressao: "6*7" });
-    return output;
+    assert.equal(webSearch, false);
+    await assert.rejects(tools.find(t => t.name === "ler_pagina")!.call({ url: "https://example.com" }), /503/);
+    const failed = (await store.listRuns(f.id))[0].trace.find(entry => entry.type === "tool")!;
+    assert.equal(failed.status, "failed"); assert.ok(failed.ms >= 0);
+    return tools.find(t => t.name === "calculadora")!.call({ expressao: "6*7" });
   };
   try {
     const run = await runtime.startRun(f.id, "Calcule");
-    assert.equal(run.status, "completed");
-    assert.equal(run.output, "42");
-    assert.deepEqual(run.trace.filter((entry) => entry.type === "tool").map((entry) => entry.status), ["failed", "completed"]);
-    assert.deepEqual(JSON.parse(run.trace.find((entry) => entry.type === "tool")!.input!), { expressao: "1/0" });
-  } finally { bridge.run = original; }
+    assert.equal(run.status, "completed"); assert.equal(run.output, "42");
+    assert.deepEqual(run.trace.filter(entry => entry.type === "tool").map(entry => entry.status), ["failed", "completed"]);
+  } finally { bridge.run = original; globalThis.fetch = fetch0; }
 });
 
 test("detalhes somam resumo e resposta sem duplicar notificações cumulativas e preservam falhas", async () => {
@@ -552,11 +555,11 @@ test("detalhes somam resumo e resposta sem duplicar notificações cumulativas e
     return calls % 2 ? "Resumo da memória" : "Resposta final";
   };
   try {
-    const f = flow(graph);
+    const f = (await flow(graph));
     const run = await runtime.startRun(f.id, "Olá");
     const trace = run.trace.find((entry) => entry.nodeId === "analista")!;
     assert.equal(calls, 2);
-    assert.deepEqual(store.getRun(run.id).trace.find((entry) => entry.nodeId === "analista")!.usage, { input: 40, output: 10, total: 50 });
+    assert.deepEqual((await store.getRun(run.id)).trace.find((entry) => entry.nodeId === "analista")!.usage, { input: 40, output: 10, total: 50 });
     assert.match(trace.input!, /Resumo da memória/);
     assert.match(trace.input!, /Analise Olá/);
     assert.equal(trace.instructions, "Instrução registrada");
@@ -580,13 +583,16 @@ test("detalhes somam resumo e resposta sem duplicar notificações cumulativas e
 test("cancelar a execução encerra o registro da ferramenta em andamento", async () => {
   const original = bridge.run, fetch0 = globalThis.fetch;
   const graph = template(); graph.nodes[1].data.config.tools = "interno:ler_pagina";
-  const f = flow(graph);
+  const f = (await flow(graph));
   let release: () => void = () => {};
   const barrier = new Promise<void>((resolve) => { release = resolve; });
-  globalThis.fetch = async () => { await barrier; return new Response("Resultado tardio"); };
+  let entered!: () => void;
+  const sending = new Promise<void>(resolve => { entered = resolve; });
+  globalThis.fetch = async () => { entered(); await barrier; return new Response("Resultado tardio"); };
   bridge.run = async ({ tools = [] }) => {
     const pending = tools[0].call({ url: "https://example.com" });
-    const run = store.listRuns().find((r) => r.flowId === f.id)!;
+    await sending;
+    const run = (await store.listRuns()).find((r) => r.flowId === f.id)!;
     await runtime.cancelRun(run.id);
     release();
     return pending;

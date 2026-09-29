@@ -57,7 +57,7 @@ export function provedorDeEnvio(): ProvedorEnvio {
 // ---------------------------------------------------------------------------------------------
 // Access token: renovado pelo código de renovação e guardado só em memória até expirar, um cache por
 // provedor. A Microsoft devolve um código de renovação novo a cada renovação (rotação): quando vem, é
-// gravado no lugar do antigo (salvo quando o antigo veio do ambiente — aí não dá).
+// gravado na configuração cifrada do usuário.
 // ---------------------------------------------------------------------------------------------
 
 const TOKEN_URL: Record<ProvedorCaixa, string> = {
@@ -74,7 +74,7 @@ const ESCOPO: Record<ProvedorCaixa, string> = { gmail: ESCOPO_GMAIL, outlook: ES
 
 type CacheToken = { token: string; expiraEm: number; refresh: string };
 const cache = new Map<string, CacheToken>();
-const cacheKey = (provedor: ProvedorCaixa) => `${tenantId() || "legacy"}:${provedor}`;
+const cacheKey = (provedor: ProvedorCaixa) => `${tenantId()}:${provedor}`;
 
 export function limparCache(provedor?: ProvedorCaixa): void {
   if (provedor) cache.delete(cacheKey(provedor));
@@ -99,7 +99,7 @@ async function renovarAccessToken(provedor: ProvedorCaixa, refresh: string): Pro
     throw new ErroEnvioEmail(`Não foi possível renovar o acesso ao ${nome} agora. Tente de novo em alguns minutos.`);
   }
   let refreshAtual = refresh;
-  if (dados.refresh_token && dados.refresh_token !== refresh && (tenantId() || !process.env[CHAVES[provedor].refresh])) {
+  if (dados.refresh_token && dados.refresh_token !== refresh) {
     setConfig(CHAVES[provedor].refresh, dados.refresh_token);
     refreshAtual = dados.refresh_token;
   }
@@ -218,7 +218,7 @@ export async function desconectar(provedor: ProvedorCaixa): Promise<void> {
   limparCache(provedor);
   setConfig(chaves.refresh, null);
   setConfig(chaves.conta, null);
-  if (!refresh || (!tenantId() && process.env[chaves.refresh]) || provedor !== "gmail") return;
+  if (!refresh || provedor !== "gmail") return;
   try {
     await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(refresh)}`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" } });
   } catch {

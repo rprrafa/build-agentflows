@@ -59,7 +59,7 @@ Geração de imagens disponível em Agente/LLM com chaves próprias de Replicate
 Higgsfield e MuAPI. O catálogo inicial, entradas aceitas, resultados privados e
 limitações de cancelamento estão em [MEDIA-PROVIDERS.md](MEDIA-PROVIDERS.md).
 
-Next.js 16, React 19, TypeScript, Tailwind 4, React Flow, Drizzle e PostgreSQL. Cada usuário tem seu contexto privado; Redis notifica o worker sobre tarefas da fila persistida no PostgreSQL. A remoção dos repositórios e integrações legados está em andamento, conforme [SAAS-PLAN.md](SAAS-PLAN.md). A IA principal usa login ChatGPT pelo Codex App Server oficial; o OpenRouter é configurado por usuário.
+Next.js 16, React 19, TypeScript, Tailwind 4, React Flow, Drizzle e PostgreSQL. Cada usuário tem seu contexto privado; Redis notifica o worker sobre tarefas da fila persistida no PostgreSQL. Não há modo de conta única nem armazenamento SQLite. A arquitetura e a validação estão em [SAAS-PLAN.md](SAAS-PLAN.md). A IA principal usa login ChatGPT pelo Codex App Server oficial; o OpenRouter é configurado por usuário.
 
 ## Rodar localmente
 

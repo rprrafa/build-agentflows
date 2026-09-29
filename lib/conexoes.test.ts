@@ -19,21 +19,21 @@ test("salvar campos aceita só chaves conhecidas e preserva segredos mascarados"
   assert.equal(status.find((s) => s.chave === "WHATSAPP_PROVEDOR")?.valor, "zapi");
   assert.equal(status.find((s) => s.chave === "ZAPI_TOKEN")?.definido, false);
 });
-test("servidores MCP: adicionar, listar com a conexão antiga, remover", async () => {
+test("servidores MCP: adicionar, listar e remover somente conexões explícitas", async () => {
   setConfig("FERRAMENTAS_URL", "https://antigo.exemplo.com/mcp");
   const novo = c.adicionarServidorMCP("CRM", "https://crm.exemplo.com/mcp", "abc");
   assert.match(novo.prefixo, /^MCP_[0-9A-F]{6}$/);
   const lista = c.servidoresMCP();
   assert.deepEqual(
     lista.map((s) => s.nome),
-    ["Ferramentas", "CRM"],
+    ["CRM"],
   );
   assert.equal(getConfig(`${novo.prefixo}_CODIGO`), "abc");
   assert.equal((await c.conexaoMCP(novo.prefixo))?.url, "https://crm.exemplo.com/mcp");
   assert.throws(() => c.adicionarServidorMCP("", "https://x"), /nome/);
   assert.throws(() => c.adicionarServidorMCP("X", "ftp://x"), /endereço/);
   c.removerServidorMCP(novo.prefixo);
-  assert.equal(c.servidoresMCP().length, 1);
+  assert.equal(c.servidoresMCP().length, 0);
   assert.equal(getConfig(`${novo.prefixo}_URL`), undefined);
   assert.throws(() => c.servidorMCP(novo.prefixo), /não encontrado/);
 });

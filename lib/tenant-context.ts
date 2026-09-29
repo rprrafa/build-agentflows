@@ -6,7 +6,6 @@ import { loadConfigState, commitConfigState, type ConfigState } from "./tenant-c
 
 type TenantContext = { readonly user: Readonly<SaasUser>; readonly db: Database; readonly config: ConfigState; active: boolean };
 const contexts = new AsyncLocalStorage<TenantContext>();
-export function saasEnabled() { return !!process.env.DATABASE_URL; }
 
 export function currentTenant(): TenantContext {
   const context = contexts.getStore();
@@ -14,16 +13,7 @@ export function currentTenant(): TenantContext {
   return context;
 }
 
-/** Legacy mode exists only while no SaaS database is configured. Never fall back from a failed session. */
-export function tenantId(): string | undefined {
-  const context = contexts.getStore();
-  if (context || saasEnabled()) return currentTenant().user.id;
-  return undefined;
-}
-
-export function forbidLegacyStorage() {
-  if (contexts.getStore() || saasEnabled()) throw new Error("O armazenamento global SQLite não pode ser usado no contexto SaaS.");
-}
+export function tenantId(): string { return currentTenant().user.id; }
 
 async function run<T>(db: Database, user: SaasUser, action: () => T | Promise<T>): Promise<T> {
   if (contexts.getStore()) throw new Error("Não é permitido trocar de usuário dentro de uma operação.");

@@ -16,7 +16,7 @@ function table(config: RecordConfig) {
 }
 function namespace(config: RecordConfig) {
   const owner = tenantId();
-  return `${owner ? `${owner}:` : ""}${config.namespace || "agentflows"}`;
+  return `${owner}:${config.namespace || "agentflows"}`;
 }
 export async function readManagedRecords(
   config: RecordConfig,

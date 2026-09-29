@@ -1,6 +1,6 @@
 import { FlowError } from "./flow-store";
 import type { SourceFile } from "./knowledge-loaders";
-import type { saveKnowledgeSource } from "./knowledge-store";
+import type { saveKnowledgeSource } from "./tenant-knowledge";
 export async function knowledgeRequestBytes(req: Request, max: number) {
   if (Number(req.headers.get("content-length")) > max)
     throw new FlowError("O conteúdo enviado excede o limite permitido.", 413);

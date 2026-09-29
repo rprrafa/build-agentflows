@@ -4,17 +4,10 @@ import { validateMediaConfig } from "./media-models";
 import { knowledgeSettings } from "./knowledge-settings";
 import { validateToolCards } from "./agent-tools";
 import { outputs } from "./flow-graph";
-import { randomUUID } from "node:crypto";
-import { abrirBanco } from "./store";
 import {
   BLOCKS,
-  block,
-  template,
   type Flow,
   type Graph,
-  type Run,
-  type RunPage,
-  type RunSummary,
 } from "./flow-types";
 export class FlowError extends Error {
   status: number;
@@ -22,15 +15,6 @@ export class FlowError extends Error {
     super(message);
     this.status = status;
   }
-}
-function db() {
-  const d = abrirBanco();
-  d.exec(`CREATE TABLE IF NOT EXISTS flows (id TEXT PRIMARY KEY, body TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS flow_runs (id TEXT PRIMARY KEY, flow_id TEXT NOT NULL, status TEXT NOT NULL, body TEXT NOT NULL);
-    CREATE INDEX IF NOT EXISTS flow_runs_flow ON flow_runs(flow_id);
-    CREATE INDEX IF NOT EXISTS flow_runs_status ON flow_runs(status);
-    CREATE INDEX IF NOT EXISTS flow_runs_flow_status ON flow_runs(flow_id,status);`);
-  return d;
 }
 export function validateGraph(value: unknown, executable = false): Graph {
   if (!value || typeof value !== "object")
@@ -207,49 +191,6 @@ export function validateGraph(value: unknown, executable = false): Graph {
 export function currentFlow(flow: Flow): Flow {
   return { ...flow, version: 1, published: flow.published ? structuredClone(flow.graph) : null };
 }
-export function listFlows(): Flow[] {
-  return (
-    db().prepare("SELECT body FROM flows ORDER BY rowid DESC").all() as {
-      body: string;
-    }[]
-  ).map((r) => currentFlow(JSON.parse(r.body)));
-}
-export function getFlow(id: string): Flow {
-  const row = db().prepare("SELECT body FROM flows WHERE id=?").get(id) as
-    { body: string } | undefined;
-  if (!row) throw new FlowError("Fluxo não encontrado.", 404);
-  return currentFlow(JSON.parse(row.body));
-}
-function putFlow(f: Flow) {
-  db()
-    .prepare(
-      "INSERT INTO flows(id,body) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body",
-    )
-    .run(f.id, JSON.stringify(f));
-  return f;
-}
-export function createFlow(name = "Novo fluxo", example = false) {
-  const graph = example ? template(true) : { nodes: [block("start", "inicio", 0, 0)], edges: [] };
-  return putFlow({
-    id: randomUUID(),
-    name: name.slice(0, 100),
-    description: "",
-    graph,
-    published: null,
-    version: 1,
-    updatedAt: new Date().toISOString(),
-  });
-}
-export function createSavedFlow(data: unknown) {
-  return writeFlow({ id: randomUUID(), name: "", description: "", graph: { nodes: [], edges: [] }, published: null, version: 1, updatedAt: new Date().toISOString() }, data);
-}
-export function saveFlow(id: string, data: unknown) {
-  return writeFlow(getFlow(id), data);
-}
-function writeFlow(f: Flow, data: unknown) {
-  return putFlow(normalizeFlowUpdate(f, data));
-}
-/** Pure validation shared by legacy import and the PostgreSQL repository. */
 export function normalizeFlowUpdate(f: Flow, data: unknown): Flow {
   if (!data || typeof data !== "object")
     throw new FlowError("Envie os dados do fluxo.");
@@ -273,93 +214,4 @@ export function normalizeFlowUpdate(f: Flow, data: unknown): Flow {
   f.published = structuredClone(f.graph);
   f.updatedAt = new Date().toISOString();
   return f;
-}
-export function publishFlow(id: string, active = true) {
-  const f = getFlow(id);
-  f.published = active ? validateGraph(f.graph, true) : null;
-  f.version = 1;
-  f.updatedAt = new Date().toISOString();
-  return putFlow(f);
-}
-export function deleteFlow(id: string) {
-  getFlow(id);
-  if (
-    db().prepare("SELECT 1 FROM flow_runs WHERE flow_id=? AND status IN ('running','waiting') LIMIT 1").get(id)
-  )
-    throw new FlowError(
-      "Finalize ou cancele as execuções pendentes antes de excluir.",
-      409,
-    );
-  db().prepare("DELETE FROM flows WHERE id=?").run(id);
-}
-export function putRun(r: Run) {
-  r.updatedAt = new Date().toISOString();
-  db()
-    .prepare(
-      "INSERT INTO flow_runs(id,flow_id,status,body) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,body=excluded.body",
-    )
-    .run(r.id, r.flowId, r.status, JSON.stringify(r));
-  return r;
-}
-export function getRun(id: string): Run {
-  const row = db().prepare("SELECT body FROM flow_runs WHERE id=?").get(id) as
-    { body: string } | undefined;
-  if (!row) throw new FlowError("Execução não encontrada.", 404);
-  return JSON.parse(row.body);
-}
-export function listRuns(flowId?: string): Run[] {
-  const rows = (
-    flowId
-      ? db()
-          .prepare(
-            "SELECT body FROM flow_runs WHERE flow_id=? ORDER BY rowid DESC LIMIT 100",
-          )
-          .all(flowId)
-      : db()
-          .prepare("SELECT body FROM flow_runs ORDER BY rowid DESC LIMIT 100")
-          .all()
-  ) as { body: string }[];
-  return rows.map((r) => JSON.parse(r.body));
-}
-export function listRunPage({ page = 1, pageSize = 20, status = "all", flowId }: { page?: number; pageSize?: number; status?: string; flowId?: string } = {}): RunPage {
-  if (!Number.isSafeInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100)
-    throw new FlowError("Use uma página válida e entre 1 e 100 execuções por página.");
-  if (!["all", "running", "waiting", "completed", "failed", "cancelled"].includes(status)) throw new FlowError("Escolha um status de execução válido.");
-  const filters: string[] = [], params: string[] = [];
-  if (flowId) { filters.push("flow_id=?"); params.push(flowId); }
-  if (status !== "all") { filters.push("status=?"); params.push(status); }
-  const where = filters.length ? ` WHERE ${filters.join(" AND ")}` : "";
-  const d = db();
-  const total = Number((d.prepare(`SELECT count(*) AS total FROM flow_runs${where}`).get(...params) as { total: number }).total);
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const actualPage = Math.min(page, totalPages);
-  // Retorna apenas as colunas da lista: grafo, saída e traces são carregados ao abrir o detalhe.
-  const rows = d.prepare(`SELECT id,flow_id AS flowId,status,json_extract(body,'$.name') AS name,substr(json_extract(body,'$.input'),1,100) AS input,json_extract(body,'$.demo') AS demo,json_extract(body,'$.createdAt') AS createdAt FROM flow_runs${where} ORDER BY rowid DESC LIMIT ? OFFSET ?`).all(...params,pageSize,(actualPage-1)*pageSize) as (Omit<RunSummary,"demo"> & {demo:number})[];
-  return { items: rows.map(row => ({ ...row, demo: !!row.demo })), total, totalPages, page: actualPage, pageSize };
-}
-export function claimRun(id: string) {
-  const r = getRun(id);
-  if (r.status !== "waiting")
-    throw new FlowError("Esta execução não está aguardando uma decisão.", 409);
-  r.status = "running";
-  const changed = db()
-    .prepare(
-      "UPDATE flow_runs SET status='running',body=? WHERE id=? AND status='waiting'",
-    )
-    .run(JSON.stringify(r), id);
-  if (!changed.changes)
-    throw new FlowError("Esta decisão já foi recebida.", 409);
-  return r;
-}
-export function interruptRuns() {
-  for (const row of db()
-    .prepare("SELECT body FROM flow_runs WHERE status='running'")
-    .all() as { body: string }[]) {
-    const r: Run = JSON.parse(row.body);
-    if (r.embedSessionId) continue;
-    r.status = "failed";
-    r.error =
-      "A execução foi interrompida pelo reinício do servidor. Confira as etapas antes de executar novamente.";
-    putRun(r);
-  }
 }

@@ -12,7 +12,7 @@ import { hashToken, randomToken, unseal } from "./saas-security";
 import { currentTenant, tenantId, withTenantSession, withTenantJob } from "./tenant-context";
 import { privateDataDirectory } from "./tenant-files";
 import { tenantConfig, setTenantConfig, allTenantConfig } from "./tenant-config";
-import { getConfig, setConfig, configTransaction, abrirBanco } from "./store";
+import { getConfig, setConfig, configTransaction } from "./store";
 import { saveToolCredential, listToolCredentials, getToolCredential, deleteToolCredential, withToolCredential } from "./tool-credential-store";
 import { toolConfig } from "./tool-config-context";
 import { beginIntegrationOAuth, consumeIntegrationOAuth } from "./tenant-oauth";
@@ -76,7 +76,6 @@ test("configuração não herda ambiente ou SQLite; leitura, atualização e rem
     await asA(async () => {
       assert.equal(await tenantConfig("OPENROUTER_API_KEY"), undefined);
       assert.equal(getConfig("OPENROUTER_API_KEY"), undefined);
-      assert.throws(abrirBanco, /global SQLite/);
       await setTenantConfig("OPENROUTER_API_KEY", "secret-a");
       assert.deepEqual(await allTenantConfig(), { OPENROUTER_API_KEY: "secret-a" });
     });
@@ -409,18 +408,23 @@ test("jornada HTTP: cadastro, login pendente, confirmação, convite e recupera�
   assert.equal((await newLogin.json()).user.beta_status, "approved");
 });
 
-test("SaaS sem contexto nunca abre o SQLite ou diretório legado, mesmo com bypass da conta", async () => {
+test("sem contexto não há acesso mesmo sem DATABASE_URL", async () => {
   const oldUrl = process.env.DATABASE_URL;
-  process.env.DATABASE_URL = "postgres://configured";
-  process.env.CONTA_DESLIGADA = "1";
   try {
-    assert.throws(abrirBanco, /global SQLite/);
-    assert.throws(() => getConfig("OPENROUTER_API_KEY"), /ausente/);
-    assert.throws(() => privateDataDirectory(), /ausente/);
-    assert.throws(chatGPT, /ausente/);
+    for (const url of [undefined, "postgres://configured"]) {
+      if (url === undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL = url;
+      assert.throws(() => getConfig("OPENROUTER_API_KEY"), /ausente/);
+      assert.throws(() => setConfig("OPENROUTER_API_KEY", "secret"), /ausente/);
+      assert.throws(() => privateDataDirectory(), /ausente/);
+      assert.throws(chatGPT, /ausente/);
+      assert.throws(listToolCredentials, /ausente/);
+      await assert.rejects(createTenantFlow("Sem usuário"), /ausente/);
+      await assert.rejects(attachments.markAttachmentsUsed([]), /ausente/);
+      const { listKnowledgeBases } = await import("./knowledge-service");
+      await assert.rejects(listKnowledgeBases(), /ausente/);
+    }
   } finally {
     if (oldUrl === undefined) delete process.env.DATABASE_URL; else process.env.DATABASE_URL = oldUrl;
-    delete process.env.CONTA_DESLIGADA;
   }
 });
 

@@ -203,7 +203,7 @@ export async function indexKnowledge(baseId: string) {
               signal,
             )
           : new Map<string, number[]>();
-      if (config.recordManager.provider === "sqlite" && previous) {
+      if (config.recordManager.provider === "internal" && previous) {
         for (const { hash, record } of priorRecords)
           existing.set(hash, record.vector);
       }

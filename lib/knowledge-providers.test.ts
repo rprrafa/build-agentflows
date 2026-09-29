@@ -1,4 +1,8 @@
-import test from "node:test";
+import nodeTest, { type TestContext } from "node:test";
+import { createTenantTestContext } from "../scripts/tenant-test-context";
+const testTenant = await createTenantTestContext();
+function test(name: string, action: (t: TestContext) => unknown | Promise<unknown>) { return nodeTest(name, async t => { await testTenant.asTenant(() => action(t)); }); }
+nodeTest.after(testTenant.close);
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
@@ -63,7 +67,7 @@ const server = createServer(async (req, res) => {
 server.listen(0, "127.0.0.1");
 await once(server, "listening");
 const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-test.after(() => {
+nodeTest.after(() => {
   server.close();
   server.closeAllConnections();
   rmSync(dir, { recursive: true, force: true });
@@ -249,7 +253,7 @@ test("Pinecone valida dimensão e isola cada geração em um namespace antes de 
   const namespace =
     "agentflows_" +
     createHash("sha256")
-      .update(`${scope.baseId}:${scope.generation}`)
+      .update(`${testTenant.owner}:${scope.baseId}:${scope.generation}`)
       .digest("hex")
       .slice(0, 40);
   respond({ dimension: 3, namespaces: { [namespace]: { vectorCount: 2 } } });

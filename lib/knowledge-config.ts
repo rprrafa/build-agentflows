@@ -49,7 +49,7 @@ export function validatedIndexConfig(
     !["local", ...VECTOR_PROVIDERS.map((p) => p.id)].includes(
       c.vectorStore.provider,
     ) ||
-    !["none", "sqlite", "postgres"].includes(c.recordManager.provider)
+    !["none", "internal", "postgres"].includes(c.recordManager.provider)
   )
     throw new FlowError("Escolha configurações válidas de indexação.");
   if (

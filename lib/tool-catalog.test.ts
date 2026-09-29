@@ -1,4 +1,8 @@
-import test from "node:test";
+import nodeTest, { type TestContext } from "node:test";
+import { createTenantTestContext } from "../scripts/tenant-test-context";
+const testTenant = await createTenantTestContext();
+function test(name: string, action: (t: TestContext) => unknown | Promise<unknown>) { return nodeTest(name, async t => { await testTenant.asTenant(() => action(t)); }); }
+nodeTest.after(testTenant.close);
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,10 +13,10 @@ const { builtinTools, resolveTools } = await import("./tools");
 const { saveToolCredential } = await import("./tool-credential-store");
 const { readToolCards, replaceToolCard, validateToolCards } = await import("./agent-tools");
 const { block } = await import("./flow-types");
-const store = await import("./flow-store");
+const store = await import("./flow-service");
 const { chatGPT } = await import("./chatgpt");
 const { POST } = await import("../app/api/tools/options/route");
-test.after(() => rmSync(dir, { recursive: true, force: true }));
+nodeTest.after(() => rmSync(dir, { recursive: true, force: true }));
 function cards(target: string, params: Record<string, string>, credentialId?: string) { return JSON.stringify([{ id: "one", kind: "tool", target, params, credentialId }]); }
 test("catálogo tem exatamente as 19 ferramentas pedidas, ordenadas, com ícones e implementação", () => {
   assert.deepEqual(AGENT_TOOL_CATALOG.map((t) => t.name).sort(), ["Agent as a Tool", "BraveSearch", "Calculator", "Code Interpreter by E2B", "Search API", "Tavily API", "Exa AI", "Web Scraper Tool", "Arxiv", "Composio", "CurrentDateTime", "Brave Search MCP", "Browserless MCP", "Postgres MCP", "Github MCP", "Microsoft Teams", "WolframAlpha", "Custom MCP", "OpenAPI Toolkit"].sort());
@@ -31,9 +35,9 @@ test("parâmetros persistem e são removidos ao trocar ferramenta; ações invá
 });
 test("Agent as a Tool chama somente o fluxo escolhido e o fuso horário é aplicado", async () => {
   chatGPT().account = async () => ({ account: { type: "chatgpt", email: "test@example.com", planType: "plus" }, login: null, error: null });
-  const flow = store.createFlow("Alvo");
+  const flow = (await store.createFlow("Alvo"));
   const end = block("end", "end", 0, 0); end.data.config.text = "Alvo: {{input}}";
-  store.saveFlow(flow.id, { name: flow.name, description: "", graph: { nodes: [block("start", "start", 0,0), end], edges: [{ id: "edge", source: "start", target: "end" }] } }); store.publishFlow(flow.id);
+  (await store.saveFlow(flow.id, { name: flow.name, description: "", graph: { nodes: [block("start", "start", 0,0), end], edges: [{ id: "edge", source: "start", target: "end" }] } })); (await store.publishFlow(flow.id));
   const [tool] = await resolveTools(["interno:executar_fluxo"], cards("interno:executar_fluxo", { flowId: flow.id, description: "Meu agente" }));
   assert.equal(tool.description, "Meu agente");
   assert.equal(JSON.parse(await tool.call({ entrada: "Oi", fluxo: "injetado" })).output, "Alvo: Oi");
@@ -41,7 +45,7 @@ test("Agent as a Tool chama somente o fluxo escolhido e o fuso horário é aplic
   const [clock] = await resolveTools(["interno:data_hora"], cards("interno:data_hora", { timezone: "UTC" }));
   assert.equal(JSON.parse(await clock.call({})).fuso, "UTC");
 });
-test("MCP Github e Custom usam a conta escolhida, listam opções e respeitam ações autorizadas", async (t) => {
+nodeTest("MCP Github e Custom usam a conta escolhida, listam opções e respeitam ações autorizadas", async (t) => {
   const tenant = await (await import("../scripts/tenant-test-context")).createTenantTestContext(); t.after(tenant.close);
   const fetch0 = globalThis.fetch;
   const credential = await tenant.asTenant(() => saveToolCredential({ name: "Github", provider: "github_mcp", fields: { TOOL_GITHUB_TOKEN: "github-fixture" }  }));

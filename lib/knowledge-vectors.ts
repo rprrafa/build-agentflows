@@ -25,7 +25,7 @@ export type StoredVector = {
 type Config = IndexConfig["vectorStore"];
 const digest = (s: VectorScope) =>
   createHash("sha256")
-    .update(`${tenantId() ? `${tenantId()}:` : ""}${s.baseId}:${s.generation}`)
+    .update(`${tenantId()}:${s.baseId}:${s.generation}`)
     .digest("hex")
     .slice(0, 40);
 export const vectorCollection = (s: VectorScope) => `kb_${digest(s)}`;
@@ -33,7 +33,7 @@ export const vectorPointId = (id: string) =>
   `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20, 32)}`;
 // Qdrant names stay compatible with indexes created before the provider expansion.
 const qdrantCollection = (s: VectorScope) =>
-  tenantId() ? vectorCollection(s) : `kb_${s.baseId.replaceAll("-", "")}_${s.generation.replaceAll("-", "")}`;
+  vectorCollection(s);
 const namespace = (c: Config, s: VectorScope) =>
   `${c.options?.namespace || "agentflows"}_${digest(s)}`;
 const weaviateClass = (s: VectorScope) => `Kb${digest(s)}`;

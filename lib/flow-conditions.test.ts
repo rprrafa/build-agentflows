@@ -1,4 +1,8 @@
-import test from "node:test";
+import nodeTest, { type TestContext } from "node:test";
+import { createTenantTestContext } from "../scripts/tenant-test-context";
+const testTenant = await createTenantTestContext();
+function test(name: string, action: (t: TestContext) => unknown | Promise<unknown>) { return nodeTest(name, async t => { await testTenant.asTenant(() => action(t)); }); }
+nodeTest.after(testTenant.close);
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,10 +11,10 @@ import { conditionCriteria, matchesCriterion, COMPARISONS } from "./flow-conditi
 import { outputs, connectionProblem } from "./flow-graph";
 import { block, type Graph } from "./flow-types";
 const dir = mkdtempSync(join(tmpdir(), "conditions-test-")); process.env.DATA_DIR = dir;
-const store = await import("./flow-store");
+const store = await import("./flow-service");
 const runtime = await import("./flow-runtime");
 const { parseGenerated } = await import("./flow-generator");
-test.after(() => rmSync(dir, { recursive: true, force: true }));
+nodeTest.after(() => rmSync(dir, { recursive: true, force: true }));
 const rows = [
   { id: "yes", value: "{{input}}", operator: "equals", compare: "urgente" },
   { id: "criterion_2", value: "{{input}}", operator: "contains", compare: "pedido" },
@@ -36,12 +40,12 @@ test("comparadores aceitam texto, valores numéricos e campos vazios", () => {
 test("execução usa primeiro critério atendido, saídas extras e caso contrário", async () => {
   const g = graph();
   store.validateGraph(g, true);
-  const f = store.createSavedFlow({ name: "Critérios", description: "", graph: g });
+  const f = (await store.createSavedFlow({ name: "Critérios", description: "", graph: g }));
   for (const [input, expected] of [["urgente", "yes"], ["pedido urgente", "criterion_2"], ["muito urgente", "criterion_3"], ["normal", "no"]]) {
     const run = await runtime.startRun(f.id, input, false, true);
     assert.equal(run.status, "completed"); assert.equal(run.output, expected);
   }
-  assert.deepEqual(store.getFlow(f.id).graph, g);
+  assert.deepEqual((await store.getFlow(f.id)).graph, g);
   const incomplete = structuredClone(g); incomplete.edges.pop();
   assert.throws(() => store.validateGraph(incomplete, true), /saídas/);
   assert.equal(connectionProblem({ ...g, edges: g.edges.filter((e) => e.sourceHandle !== "criterion_2") }, { source: "cond", sourceHandle: "criterion_2", target: "end_criterion_2" }), null);
@@ -51,7 +55,7 @@ test("condições antigas seguem funcionando sem modificar conexões sim/não", 
   g.nodes[1].data.config = { value: "{{input}}", operator: "equals", compare: "urgente" };
   g.nodes = g.nodes.filter((n) => !n.id.includes("criterion_"));
   g.edges = g.edges.filter((e) => !e.target.includes("criterion_"));
-  const f = store.createSavedFlow({ name: "Antigo", description: "", graph: g });
+  const f = (await store.createSavedFlow({ name: "Antigo", description: "", graph: g }));
   assert.equal((await runtime.startRun(f.id, "urgente", false, true)).output, "yes");
   assert.equal((await runtime.startRun(f.id, "outro", false, true)).output, "no");
 });

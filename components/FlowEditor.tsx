@@ -153,10 +153,8 @@ export function FlowEditor({ id }: { id: string }) {
     void (id === "new" ? Promise.resolve(draft) : request<Flow>("/api/flows/" + id))
       .then((f) => {
         if (alive) {
-          let legacyVoice = "";
-          try { if (f.voiceId === undefined) legacyVoice = localStorage.getItem("agentflows-voz-" + id) || ""; } catch {}
-          setFlow(legacyVoice ? { ...f, voiceId: legacyVoice } : f);
-          if (legacyVoice || !f.published) setDirty(true);
+          setFlow(f);
+          if (!f.published) setDirty(true);
           setGraph(f.graph);
         }
       })

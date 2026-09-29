@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint --ignore-pattern \"data/**\"",
-    "test": "node --import ./scripts/gancho-ts.mjs --test lib/*.test.ts",
+    "test": "node --import ./scripts/gancho-ts.mjs --test --test-concurrency=4 lib/*.test.ts",
     "test:saas": "node --import ./scripts/gancho-ts.mjs --test lib/saas-*.test.ts",
     "test:redis": "node --import ./scripts/gancho-ts.mjs scripts/test-redis-queue.mjs",
     "test:postgres": "node scripts/test-postgres.mjs",

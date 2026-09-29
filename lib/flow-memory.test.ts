@@ -1,33 +1,37 @@
-import test from "node:test";
+import nodeTest, { type TestContext } from "node:test";
+import { createTenantTestContext } from "../scripts/tenant-test-context";
+const testTenant = await createTenantTestContext();
+function test(name: string, action: (t: TestContext) => unknown | Promise<unknown>) { return nodeTest(name, async t => { await testTenant.asTenant(() => action(t)); }); }
+nodeTest.after(testTenant.close);
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 const dir = mkdtempSync(join(tmpdir(), "agentflows-memory-"));
 process.env.DATA_DIR = dir;
-const { createFlow, saveFlow, getFlow, getRun, validateGraph } = await import("./flow-store");
+const { createFlow, saveFlow, getFlow, getRun, validateGraph } = await import("./flow-service");
 const { prepareRun, execute, startRun } = await import("./flow-runtime");
 const { block } = await import("./flow-types");
 const { memoryMessages, memoryPrompt } = await import("./flow-memory");
-const { conversationHistory } = await import("./conversation");
+const { tenantConversationHistory: conversationHistory } = await import("./conversation");
 const { chatGPT } = await import("./chatgpt");
-const bridge = chatGPT();
+const bridge = await testTenant.asTenant(chatGPT);
 bridge.account = async () => ({ account: { type: "chatgpt", email: "fixture@example.com", planType: "plus" }, login: null, error: null });
-test.after(() => rmSync(dir, { recursive: true, force: true }));
+nodeTest.after(() => rmSync(dir, { recursive: true, force: true }));
 
-function flow() {
-  const created = createFlow("Memória");
+async function flow() {
+  const created = (await createFlow("Memória"));
   const nodes = [block("start", "inicio", 0, 0), block("agent", "a", 0, 0), block("llm", "b", 0, 0), block("agent", "c", 0, 0)];
-  return saveFlow(created.id, { ...created, graph: { nodes, edges: nodes.slice(1).map((node, i) => ({ id: `e${i}`, source: nodes[i].id, target: node.id })) } });
+  return (await saveFlow(created.id, { ...created, graph: { nodes, edges: nodes.slice(1).map((node, i) => ({ id: `e${i}`, source: nodes[i].id, target: node.id })) } }));
 }
 const noSummary = async () => { throw new Error("Não deveria resumir"); };
 
 test("Agente e LLM novos e antigos recebem a conversa e todas as respostas anteriores por padrão", async () => {
-  const f = flow();
+  const f = (await flow());
   assert.equal(f.graph.nodes[1].data.config.memoryType, "allMessages");
   assert.equal(f.graph.nodes[2].data.config.memoryType, "allMessages");
   delete f.graph.nodes[2].data.config.memoryType;
-  saveFlow(f.id, f);
+  (await saveFlow(f.id, f));
   const prompts: string[] = [];
   bridge.run = async ({ prompt }) => { prompts.push(prompt); return ["Resultado exclusivo A", "Resultado exclusivo B", "Conclusão C"][prompts.length - 1]; };
   const run = await prepareRun(f.id, "Pedido original", false, false);
@@ -45,15 +49,15 @@ test("Agente e LLM novos e antigos recebem a conversa e todas as respostas anter
   assert.match(prompts[2], /Resultado exclusivo B/);
   assert.equal((prompts[1].match(/Resultado exclusivo A/g) || []).length, 1);
   assert.equal((prompts[2].match(/Resultado exclusivo B/g) || []).length, 1);
-  assert.equal(getRun(result.id).trace.filter((entry) => entry.type === "step").length, 4);
+  assert.equal((await getRun(result.id)).trace.filter((entry) => entry.type === "step").length, 4);
 });
 
 test("memória desligada isola o contexto do bloco, mas sua resposta continua disponível aos próximos", async () => {
-  const f = flow();
+  const f = (await flow());
   f.graph.nodes[2].data.config.memoryEnabled = "false";
   f.graph.nodes[2].data.config.prompt = "Tarefa independente";
-  saveFlow(f.id, f);
-  assert.equal(getFlow(f.id).graph.nodes[2].data.config.memoryEnabled, "false");
+  (await saveFlow(f.id, f));
+  assert.equal((await getFlow(f.id)).graph.nodes[2].data.config.memoryEnabled, "false");
   const prompts: string[] = [];
   bridge.run = async ({ prompt }) => { prompts.push(prompt); return "Resposta " + prompts.length; };
   const result = await startRun(f.id, "Pedido original", false, false);
@@ -65,9 +69,9 @@ test("memória desligada isola o contexto do bloco, mas sua resposta continua di
 });
 
 test("janela limita mensagens anteriores sem cortar mensagem da etapa, instruções ou referências", async () => {
-  const f = flow();
+  const f = (await flow());
   f.graph.nodes[2].data.config = { ...f.graph.nodes[2].data.config, memoryType: "windowSize", memoryWindowSize: "1", system: "Regra importante", prompt: "Revise {{last}}" };
-  saveFlow(f.id, f);
+  (await saveFlow(f.id, f));
   const calls: { prompt: string; system: string }[] = [];
   bridge.run = async ({ prompt, system }) => { calls.push({ prompt, system }); return "Resposta " + calls.length; };
   const result = await startRun(f.id, "Mensagem antiga", false, false);
@@ -79,10 +83,10 @@ test("janela limita mensagens anteriores sem cortar mensagem da etapa, instruç�
 });
 
 test("resumo usa o mesmo modelo, sem ferramentas, e não substitui as respostas armazenadas", async () => {
-  const f = flow();
+  const f = (await flow());
   f.graph.nodes[2].data.config.memoryType = "conversationSummary";
   f.graph.nodes[2].data.config.model = "modelo-do-resumo";
-  saveFlow(f.id, f);
+  (await saveFlow(f.id, f));
   const calls: Parameters<typeof bridge.run>[0][] = [];
   bridge.run = async (args) => {
     calls.push(args);
@@ -105,7 +109,7 @@ test("resumo usa o mesmo modelo, sem ferramentas, e não substitui as respostas 
 });
 
 test("resumo com recentes só resume o excesso, preserva a ordem e mantém a mensagem atual", async () => {
-  const run = await prepareRun(flow().id, "Mensagem atual", false, false);
+  const run = await prepareRun((await flow()).id, "Mensagem atual", false, false);
   run.conversation = [{ input: "Antiga " + "x".repeat(1000), output: "Recente" }];
   let summarized = "";
   const prompt = await memoryPrompt(run, { memoryType: "conversationSummaryBuffer", memoryMaxTokens: "100" }, run.input, async (history) => { summarized = history; return "Resumo antigo"; });
@@ -122,7 +126,7 @@ test("resumo com recentes só resume o excesso, preserva a ordem e mantém a men
 });
 
 test("memória preserva passagens repetidas e exclui chamadas internas de ferramentas", async () => {
-  const run = await prepareRun(flow().id, "Pedido", false, false);
+  const run = await prepareRun((await flow()).id, "Pedido", false, false);
   const entry = { nodeId: "a", label: "Agente", output: "Primeira passagem", at: "", ms: 1 };
   run.trace = [entry, { ...entry, type: "tool", label: "Ferramenta: busca", output: "Detalhe interno" }, { ...entry, type: "step", output: "Segunda passagem" }];
   const messages = memoryMessages(run);
@@ -130,13 +134,13 @@ test("memória preserva passagens repetidas e exclui chamadas internas de ferram
 });
 
 test("histórico aceita mais de seis interações e preserva textos longos", async () => {
-  const f = flow();
+  const f = (await flow());
   const input = "Pergunta " + "a".repeat(1200);
   const output = "Resposta " + "b".repeat(4500);
   bridge.run = async () => output;
   const ids: string[] = [];
   for (let i = 0; i < 7; i++) ids.push((await startRun(f.id, input, false, false)).id);
-  const history = conversationHistory(f.id, ids);
+  const history = (await conversationHistory(f.id, ids));
   assert.equal(history.length, 7);
   assert.equal(history[0].input, input);
   assert.equal(history[6].output, output);
@@ -144,13 +148,13 @@ test("histórico aceita mais de seis interações e preserva textos longos", asy
 
 test("salvamento rejeita tipos e limites inválidos; falhas no resumo não são ignoradas", async () => {
   for (const config of [{ memoryType: "inexistente" }, { memoryType: "windowSize", memoryWindowSize: "0" }, { memoryType: "windowSize", memoryWindowSize: "2.5" }, { memoryType: "conversationSummaryBuffer", memoryMaxTokens: "abc" }]) {
-    const f = flow();
+    const f = (await flow());
     Object.assign(f.graph.nodes[1].data.config, config);
     assert.throws(() => validateGraph(f.graph), /memória|mensagens|tokens/);
   }
-  const f = flow();
+  const f = (await flow());
   f.graph.nodes[2].data.config.memoryType = "conversationSummary";
-  saveFlow(f.id, f);
+  (await saveFlow(f.id, f));
   bridge.run = async ({ system }) => { if (system.startsWith("Resuma")) throw new Error("Provedor indisponível"); return "Resposta A"; };
   const result = await startRun(f.id, "Pedido", false, false);
   assert.equal(result.status, "failed");
@@ -158,7 +162,7 @@ test("salvamento rejeita tipos e limites inválidos; falhas no resumo não são 
   assert.equal(result.outputs.b, undefined);
 });
 
-test("chat conserva o nome entre mensagens e inicia sem histórico após limpar a conversa", async (t) => {
+nodeTest("chat conserva o nome entre mensagens e inicia sem histórico após limpar a conversa", async (t) => {
   const { POST } = await import("../app/api/flows/[id]/run/route");
   const { createTenantTestContext } = await import("../scripts/tenant-test-context");
   const { createTenantFlow, getTenantRun } = await import("./tenant-flows");

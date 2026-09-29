@@ -1,4 +1,8 @@
-import test from "node:test";
+import nodeTest, { type TestContext } from "node:test";
+import { createTenantTestContext } from "../scripts/tenant-test-context";
+const testTenant = await createTenantTestContext();
+function test(name: string, action: (t: TestContext) => unknown | Promise<unknown>) { return nodeTest(name, async t => { await testTenant.asTenant(() => action(t)); }); }
+nodeTest.after(testTenant.close);
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,8 +11,8 @@ import { createServer } from "node:http";
 import { once } from "node:events";
 const dir = mkdtempSync(join(tmpdir(), "agentflows-knowledge-"));
 process.env.DATA_DIR = dir;
-const store = await import("./knowledge-store");
-const index = await import("./knowledge-index");
+const store = await import("./knowledge-service");
+const index = await import("./knowledge-index-service");
 const loaders = await import("./knowledge-loaders");
 const { DEFAULT_INDEX, DEFAULT_SPLITTER } = await import("./knowledge-types");
 const { KNOWLEDGE_LOADERS } = await import("./knowledge-catalog");
@@ -93,14 +97,14 @@ const server = createServer(async (req, res) => {
 server.listen(0, "127.0.0.1");
 await once(server, "listening");
 const url = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-test.after(async () => {
+nodeTest.after(async () => {
   server.close();
   server.closeAllConnections();
   rmSync(dir, { recursive: true, force: true });
 });
-function base(name = "Atendimento") {
-  const base = store.createKnowledgeBase({ name });
-  store.updateKnowledgeBase(base.id, {
+async function base(name = "Atendimento") {
+  const base = (await store.createKnowledgeBase({ name }));
+  (await store.updateKnowledgeBase(base.id, {
     config: {
       ...structuredClone(DEFAULT_INDEX),
       embeddings: {
@@ -110,17 +114,17 @@ function base(name = "Atendimento") {
         apiKey: "secret-embedding",
       },
     },
-  });
+  }));
   return base;
 }
-function source(baseId: string, text: string, name = "Política") {
-  return store.saveKnowledgeSource(baseId, {
+async function source(baseId: string, text: string, name = "Política") {
+  return (await store.saveKnowledgeSource(baseId, {
     name,
     loader: "plain",
     config: { text },
     splitter: DEFAULT_SPLITTER,
     metadata: {},
-  });
+  }));
 }
 test("catálogo contém exatamente os 20 extratores solicitados, em ordem alfabética", () => {
   assert.equal(KNOWLEDGE_LOADERS.length, 20);
@@ -205,49 +209,46 @@ test("extrai texto, CSV com aspas e JSON aninhado; fragmentação preserva limit
   );
 });
 test("credenciais cifradas e isolamento entre bases e fontes", async () => {
-  const b = base();
-  const other = base("Outra");
-  const s = store.saveKnowledgeSource(b.id, {
+  const b = (await base());
+  const other = (await base("Outra"));
+  const s = (await store.saveKnowledgeSource(b.id, {
     name: "Site privado",
     loader: "firecrawl",
     config: { url: "https://example.com", token: "very-secret-token" },
     splitter: DEFAULT_SPLITTER,
     metadata: {},
-  });
+  }));
   assert.equal(s.config.token, undefined);
   assert.deepEqual(s.configuredSecrets, ["token"]);
   assert.ok(
-    !JSON.stringify(store.getKnowledgeBase(b.id)).includes("secret-embedding"),
+    !JSON.stringify((await store.getKnowledgeBase(b.id))).includes("secret-embedding"),
   );
-  const rows = store
-    .knowledgeDb()
-    .prepare("SELECT valor FROM config WHERE chave LIKE 'KNOWLEDGE_%'")
-    .all();
+  const rows = (await testTenant.db.query("SELECT ciphertext FROM knowledge_private WHERE user_id=$1", [testTenant.owner])).rows;
   assert.ok(!JSON.stringify(rows).includes("very-secret-token"));
-  assert.throws(() => store.getKnowledgeSource(other.id, s.id), /não existe/);
-  assert.throws(
-    () => store.deleteKnowledgeSource(other.id, s.id),
+  await assert.rejects(async () => (await store.getKnowledgeSource(other.id, s.id)), /não existe/);
+  await assert.rejects(
+    async () => (await store.deleteKnowledgeSource(other.id, s.id)),
     /não existe/,
   );
   assert.equal(
-    store.getKnowledgeSourcePrivate(b.id, s.id).config.token,
+    (await store.getKnowledgeSourcePrivate(b.id, s.id)).config.token,
     "very-secret-token",
   );
-  store.saveKnowledgeSource(
+  (await store.saveKnowledgeSource(
     b.id,
     { ...s, config: { url: "https://example.org", token: "" } },
     undefined,
     s.id,
-  );
+  ));
   assert.equal(
-    store.getKnowledgeSourcePrivate(b.id, s.id).config.token,
+    (await store.getKnowledgeSourcePrivate(b.id, s.id)).config.token,
     "very-secret-token",
   );
 });
 test("ciclo de extração, indexação, consulta, reuso, edição e exclusão não retorna conteúdo antigo", async () => {
-  const b = base();
-  const a = source(b.id, "Reembolso permitido em sete dias.");
-  const s = source(b.id, "Frete custa vinte reais.", "Entrega");
+  const b = (await base());
+  const a = (await source(b.id, "Reembolso permitido em sete dias."));
+  const s = (await source(b.id, "Frete custa vinte reais.", "Entrega"));
   await index.processKnowledgeSource(b.id, a.id);
   await index.processKnowledgeSource(b.id, s.id);
   await assert.rejects(
@@ -270,11 +271,11 @@ test("ciclo de extração, indexação, consulta, reuso, edição e exclusão n�
   const second = await index.indexKnowledge(b.id);
   assert.equal(second.run.embedded, 0);
   assert.equal(second.run.reused, 2);
-  const chunk = store.listKnowledgeChunks(b.id, a.id)[0];
-  store.editKnowledgeChunk(b.id, chunk.id, {
+  const chunk = (await store.listKnowledgeChunks(b.id, a.id))[0];
+  (await store.editKnowledgeChunk(b.id, chunk.id, {
     pageContent: "Reembolso em trinta dias.",
     metadata: { source: "manual.pdf", page: 3 },
-  });
+  }));
   await assert.rejects(
     () => index.queryKnowledge(b.id, "reembolso"),
     /indexada/,
@@ -286,44 +287,29 @@ test("ciclo de extração, indexação, consulta, reuso, edição e exclusão n�
     (await index.queryKnowledge(b.id, "reembolso", 1))[0].pageContent,
     /trinta/,
   );
-  store.deleteKnowledgeSource(b.id, a.id);
+  (await store.deleteKnowledgeSource(b.id, a.id));
   await index.indexKnowledge(b.id);
   assert.equal(
     (await index.queryKnowledge(b.id, "reembolso", 4, 0.5)).length,
     0,
   );
   await index.deleteKnowledgeBase(b.id);
-  assert.throws(() => store.getKnowledgeBase(b.id), /não existe/);
+  await assert.rejects(async () => (await store.getKnowledgeBase(b.id)), /não existe/);
 });
 test("falha de embeddings não publica índice parcial; recuperação e trava de concorrência", async () => {
-  const b = base();
-  const s = source(b.id, "Reembolso em sete dias.");
+  const b = (await base());
+  const s = (await source(b.id, "Reembolso em sete dias."));
   await index.processKnowledgeSource(b.id, s.id);
   failure = true;
   await assert.rejects(() => index.indexKnowledge(b.id), /503/);
   failure = false;
-  assert.equal(store.getKnowledgeBase(b.id).status, "failed");
-  assert.equal(store.listKnowledgeRuns(b.id)[0].status, "failed");
+  assert.equal((await store.getKnowledgeBase(b.id)).status, "failed");
+  assert.equal((await store.listKnowledgeRuns(b.id))[0].status, "failed");
   assert.equal(
-    store
-      .knowledgeDb()
-      .prepare("SELECT * FROM knowledge_indexes WHERE base_id=?")
-      .get(b.id),
+    (await testTenant.db.query("SELECT * FROM knowledge_indexes WHERE user_id=$1 AND base_id=$2", [testTenant.owner, b.id])).rows[0],
     undefined,
   );
   await index.indexKnowledge(b.id);
-  await store.withKnowledgeLock(b.id, async () => {
-    assert.throws(
-      () =>
-        store.editKnowledgeChunk(
-          b.id,
-          store.listKnowledgeChunks(b.id)[0].id,
-          null,
-        ),
-      /andamento/,
-    );
-    await assert.rejects(() => index.indexKnowledge(b.id), /andamento/);
-  });
   malformed = true;
   await assert.rejects(
     () => index.queryKnowledge(b.id, "reembolso"),
@@ -331,13 +317,31 @@ test("falha de embeddings não publica índice parcial; recuperação e trava de
   );
   malformed = false;
 });
+nodeTest("lease de conhecimento bloqueia outras operações do mesmo usuário", async () => {
+  const b = await testTenant.asTenant(async () => {
+    const b = await base(); const s = await source(b.id, "Reembolso em sete dias.");
+    await index.processKnowledgeSource(b.id, s.id); return b;
+  });
+  let release!: () => void, entered!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const ready = new Promise<void>(resolve => { entered = resolve; });
+  const holding = testTenant.asTenant(() => store.withKnowledgeLock(b.id, async () => { entered(); await gate; }));
+  await ready;
+  try {
+    await testTenant.asTenant(async () => {
+      const chunk = (await store.listKnowledgeChunks(b.id))[0];
+      await assert.rejects(() => store.editKnowledgeChunk(b.id, chunk.id, null), /andamento/);
+      await assert.rejects(() => index.indexKnowledge(b.id), /andamento/);
+    });
+  } finally { release(); await holding; }
+});
 test("Qdrant e Ollama usam os contratos reais; gerações antigas são removidas", async () => {
-  const b = base();
+  const b = (await base());
   const config = structuredClone(DEFAULT_INDEX);
   config.embeddings = { provider: "ollama", model: "embedding-local", url };
   config.vectorStore = { provider: "qdrant", url, apiKey: "vector-secret" };
-  store.updateKnowledgeBase(b.id, { config });
-  const s = source(b.id, "Frete gratuito para assinantes.");
+  (await store.updateKnowledgeBase(b.id, { config }));
+  const s = (await source(b.id, "Frete gratuito para assinantes."));
   await index.processKnowledgeSource(b.id, s.id);
   await index.indexKnowledge(b.id);
   assert.equal(collections.size, 1);
@@ -350,7 +354,7 @@ test("Qdrant e Ollama usam os contratos reais; gerações antigas são removidas
     ),
   );
   await index.removeKnowledgeSource(b.id, s.id);
-  assert.equal(store.listKnowledgeSources(b.id).length, 0);
+  assert.equal((await store.listKnowledgeSources(b.id)).length, 0);
   assert.ok([...collections.values()].every((points) => points.length === 0));
   await index.deleteKnowledgeBase(b.id);
   assert.equal(collections.size, 0);
@@ -378,12 +382,12 @@ test("servidores locais de embeddings aceitam localhost com resolução IPv4 e I
   assert.deepEqual(vectors, [[1, 0, 0.1]]);
 });
 test("Agente consulta a base com e sem referências e preserva vínculo no fluxo", async () => {
-  const { createFlow, saveFlow, getFlow } = await import("./flow-store");
+  const { createFlow, saveFlow, getFlow } = await import("./flow-service");
   const { template } = await import("./flow-types");
   const { startRun } = await import("./flow-runtime");
   const { chatGPT } = await import("./chatgpt");
-  const b = base();
-  const s = source(b.id, "Reembolso em sete dias.", "Política de reembolso");
+  const b = (await base());
+  const s = (await source(b.id, "Reembolso em sete dias.", "Política de reembolso"));
   await index.processKnowledgeSource(b.id, s.id);
   await index.indexKnowledge(b.id);
   chatGPT().account = async () => ({
@@ -401,8 +405,8 @@ test("Agente consulta a base com e sem referências e preserva vínculo no fluxo
   const graph = template();
   graph.nodes[1].data.config.knowledgeBase = b.id;
   graph.nodes[1].data.config.knowledgeReferences = "true";
-  const flow = createFlow("Com conhecimento");
-  saveFlow(flow.id, { name: flow.name, description: "", graph });
+  const flow = (await createFlow("Com conhecimento"));
+  (await saveFlow(flow.id, { name: flow.name, description: "", graph }));
   const run = await startRun(flow.id, "Qual o prazo do reembolso?");
   assert.equal(run.status, "completed");
   assert.match(prompt, /Reembolso em sete dias/);
@@ -410,12 +414,12 @@ test("Agente consulta a base com e sem referências e preserva vínculo no fluxo
   assert.match(run.output, /Política de reembolso/);
   await assert.rejects(() => index.deleteKnowledgeBase(b.id), /vinculada/);
   graph.nodes[1].data.config.knowledgeReferences = "false";
-  saveFlow(flow.id, { name: flow.name, description: "", graph });
+  (await saveFlow(flow.id, { name: flow.name, description: "", graph }));
   const without = await startRun(flow.id, "Qual o prazo do reembolso?");
   assert.equal(without.output, "Você tem sete dias para pedir reembolso.");
   assert.doesNotMatch(prompt, /Política de reembolso/);
   assert.equal(
-    getFlow(flow.id).published?.nodes[1].data.config.knowledgeBase,
+    (await getFlow(flow.id)).published?.nodes[1].data.config.knowledgeBase,
     b.id,
   );
 });
@@ -700,7 +704,7 @@ test("Custom Document Loader executa em sandbox, valida resultado e encerra o am
   assert.match(code, /const input = \{"topic":"help"\}/);
   assert.doesNotMatch(code, /e2b-secret/);
 });
-test("rotas validam entrada, preservam multipart e não revelam chaves", async (t) => {
+nodeTest("rotas validam entrada, preservam multipart e não revelam chaves", async (t) => {
   const tenant = await (await import("../scripts/tenant-test-context")).createTenantTestContext(); t.after(tenant.close);
   const root = await import("../app/api/knowledge/route");
   const detail = await import("../app/api/knowledge/[id]/route");
@@ -736,7 +740,7 @@ test("rotas validam entrada, preservam multipart e não revelam chaves", async (
   const source = await saved.json();
   assert.deepEqual(source.fileNames, ["help.txt"]);
   await tenant.asTenant(() => import("./tenant-knowledge-index").then((m) => m.processKnowledgeSource(b.id, source.id)));
-  assert.match((await tenant.asTenant(() => import("./tenant-knowledge").then((m) => m.listKnowledgeChunks(b.id))))[0].pageContent, /sete dias/);
+  assert.match((await tenant.asTenant(() => import("./tenant-knowledge").then(async (m) => (await m.listKnowledgeChunks(b.id)))))[0].pageContent, /sete dias/);
   const read = await tenant.connect(() => detail.GET(tenant.request("/api/knowledge"), {
     params: Promise.resolve({ id: b.id }),
   }));
@@ -748,14 +752,14 @@ test("rotas validam entrada, preservam multipart e não revelam chaves", async (
 test("OpenRouter recebe os trechos e o retorno das referências permanece opcional", async (t) => {
   const { setConfig } = await import("./store");
   const { template } = await import("./flow-types");
-  const { createSavedFlow } = await import("./flow-store");
+  const { createSavedFlow } = await import("./flow-service");
   const { startRun } = await import("./flow-runtime");
-  const b = base();
-  const s = source(
+  const b = (await base());
+  const s = (await source(
     b.id,
     "Frete gratuito para assinantes.",
     "Manual de entrega",
-  );
+  ));
   await index.processKnowledgeSource(b.id, s.id);
   await index.indexKnowledge(b.id);
   setConfig("OPENROUTER_API_KEY", "or-secret");
@@ -788,11 +792,11 @@ test("OpenRouter recebe os trechos e o retorno das referências permanece opcion
     knowledgeBase: b.id,
     knowledgeReferences: "true",
   };
-  const flow = createSavedFlow({
+  const flow = (await createSavedFlow({
     name: "Consulta OpenRouter",
     description: "",
     graph,
-  });
+  }));
   const run = await startRun(flow.id, "Como funciona o frete?");
   assert.equal(run.status, "completed");
   assert.match(messages, /Frete gratuito para assinantes/);
@@ -800,26 +804,26 @@ test("OpenRouter recebe os trechos e o retorno das referências permanece opcion
   setConfig("OPENROUTER_API_KEY", null);
 });
 test("trocar servidor não encaminha a credencial anterior e indexação interrompida é recuperável", async () => {
-  const b = base();
-  const config = store.getKnowledgeBase(b.id).config;
-  assert.throws(
-    () =>
-      store.updateKnowledgeBase(b.id, {
+  const b = (await base());
+  const config = (await store.getKnowledgeBase(b.id)).config;
+  await assert.rejects(
+    async () =>
+      (await store.updateKnowledgeBase(b.id, {
         config: {
           ...config,
           embeddings: { ...config.embeddings, url: "https://other.example/v1" },
         },
-      }),
+      })),
     /chave|credencial/,
   );
   assert.equal(
-    store.indexKnowledgeConfig(b.id).embeddings.apiKey,
+    (await store.indexKnowledgeConfig(b.id)).embeddings.apiKey,
     "secret-embedding",
   );
-  const current = store.getKnowledgeBase(b.id);
+  const current = (await store.getKnowledgeBase(b.id));
   current.status = "indexing";
-  store.saveKnowledgeBaseRecord(current);
-  const recovered = store.getKnowledgeBase(b.id);
+  (await store.saveKnowledgeBaseRecord(current));
+  const recovered = (await store.getKnowledgeBase(b.id));
   assert.equal(recovered.status, "failed");
   assert.match(recovered.error!, /interrompida/);
 });

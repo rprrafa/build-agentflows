@@ -97,7 +97,7 @@ export type IndexConfig = {
     options?: Record<string, string>;
   };
   recordManager: {
-    provider: "none" | "sqlite" | "postgres";
+    provider: "none" | "internal" | "postgres";
     cleanup?: "none" | "incremental" | "full";
     sourceIdKey?: string;
     connectionString?: string;
@@ -153,7 +153,7 @@ export const DEFAULT_INDEX: IndexConfig = {
     url: "https://api.openai.com/v1",
   },
   vectorStore: { provider: "faiss", url: "" },
-  recordManager: { provider: "sqlite" },
+  recordManager: { provider: "internal" },
 };
 export const KNOWLEDGE_STATUS: Record<KnowledgeBase["status"], string> = {
   empty: "Sem documentos",

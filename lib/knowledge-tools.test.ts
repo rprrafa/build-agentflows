@@ -1,4 +1,8 @@
-import test from "node:test";
+import nodeTest, { type TestContext } from "node:test";
+import { createTenantTestContext } from "../scripts/tenant-test-context";
+const testTenant = await createTenantTestContext();
+function test(name: string, action: (t: TestContext) => unknown | Promise<unknown>) { return nodeTest(name, async t => { await testTenant.asTenant(() => action(t)); }); }
+nodeTest.after(testTenant.close);
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,16 +12,16 @@ import { once } from "node:events";
 import type { KnowledgeBinding } from "./knowledge-settings";
 const dir = mkdtempSync(join(tmpdir(), "knowledge-tools-"));
 process.env.DATA_DIR = dir;
-const store = await import("./knowledge-store");
-const runtime = await import("./knowledge-index");
+const store = await import("./knowledge-service");
+const runtime = await import("./knowledge-index-service");
 const { agentKnowledge } = await import("./knowledge-agent");
 const { knowledgeSettings } = await import("./knowledge-settings");
 const { DEFAULT_INDEX, DEFAULT_SPLITTER } = await import("./knowledge-types");
 const { template } = await import("./flow-types");
-const flows = await import("./flow-store");
+const flows = await import("./flow-service");
 const { startRun } = await import("./flow-runtime");
 const { chatGPT } = await import("./chatgpt");
-const { setConfig, abrirBanco } = await import("./store");
+const { setConfig } = await import("./store");
 let embeddingCalls = 0;
 const server = createServer(async(req,res)=>{
   let raw="";for await(const part of req)raw+=part;
@@ -26,23 +30,23 @@ const server = createServer(async(req,res)=>{
 });
 server.listen(0,"127.0.0.1");await once(server,"listening");
 const url=`http://127.0.0.1:${(server.address() as {port:number}).port}`;
-test.after(()=>{server.close();server.closeAllConnections();rmSync(dir,{recursive:true,force:true});});
+nodeTest.after(()=>{server.close();server.closeAllConnections();rmSync(dir,{recursive:true,force:true});});
 async function base(name:string,description:string,text:string) {
-  const b=store.createKnowledgeBase({name,description});
-  store.updateKnowledgeBase(b.id,{config:{...structuredClone(DEFAULT_INDEX),embeddings:{provider:"openai",model:"fixture",url,apiKey:"fixture"}}});
-  const source=store.saveKnowledgeSource(b.id,{name:`Manual ${name}`,loader:"plain",config:{text},splitter:DEFAULT_SPLITTER,metadata:{}});
-  await runtime.processKnowledgeSource(b.id,source.id);await runtime.indexKnowledge(b.id);return store.getKnowledgeBase(b.id);
+  const b=(await store.createKnowledgeBase({name,description}));
+  (await store.updateKnowledgeBase(b.id,{config:{...structuredClone(DEFAULT_INDEX),embeddings:{provider:"openai",model:"fixture",url,apiKey:"fixture"}}}));
+  const source=(await store.saveKnowledgeSource(b.id,{name:`Manual ${name}`,loader:"plain",config:{text},splitter:DEFAULT_SPLITTER,metadata:{}}));
+  await runtime.processKnowledgeSource(b.id,source.id);await runtime.indexKnowledge(b.id);return (await store.getKnowledgeBase(b.id));
 }
-const refunds=await base("Reembolsos","Consulte quando houver dúvidas sobre cancelamento e devolução de pagamentos.","O reembolso pode ser solicitado em sete dias.");
-const shipping=await base("Entregas","Consulte quando houver dúvidas sobre frete e prazo de entrega.","A entrega ocorre em três dias úteis.");
+const refunds=await testTenant.asTenant(() => base("Reembolsos","Consulte quando houver dúvidas sobre cancelamento e devolução de pagamentos.","O reembolso pode ser solicitado em sete dias."));
+const shipping=await testTenant.asTenant(() => base("Entregas","Consulte quando houver dúvidas sobre frete e prazo de entrega.","A entrega ocorre em três dias úteis."));
 const bindings:KnowledgeBinding[]=[
   {baseId:refunds.id,description:refunds.description,references:true},
   {baseId:shipping.id,description:shipping.description,references:false},
 ];
 const config={knowledgeBases:JSON.stringify(bindings)};
-function flow(kind:"agent"|"llm",extra:Record<string,string>={}) {
+async function flow(kind:"agent"|"llm",extra:Record<string,string>={}) {
   const graph=template();graph.nodes[1].data.kind=kind;graph.nodes[1].data.config={...graph.nodes[1].data.config,...config,...extra};
-  return flows.createSavedFlow({name:`Conhecimento ${kind}`,description:"",graph});
+  return (await flows.createSavedFlow({name:`Conhecimento ${kind}`,description:"",graph}));
 }
 
 test("bases são ferramentas distintas; só consultar executa embeddings, com referências isoladas",async()=>{
@@ -76,7 +80,7 @@ for(const kind of ["agent","llm"] as const)test(`${kind}: ChatGPT recebe ferrame
     options.onUsage?.({input:50,output:10,total:60});
     return "O prazo de reembolso é sete dias.";
   });
-  const f=flow(kind,{tools:"interno:data_hora"}),before=embeddingCalls;
+  const f=(await flow(kind,{tools:"interno:data_hora"})),before=embeddingCalls;
   const run=await startRun(f.id,"Qual o prazo de reembolso?");
   assert.equal(run.status,"completed");assert.equal(calls,1);assert.equal(embeddingCalls,before+1);
   assert.match(run.output,/Manual Reembolsos/);assert.doesNotMatch(run.output,/Manual Entregas/);
@@ -85,7 +89,7 @@ for(const kind of ["agent","llm"] as const)test(`${kind}: ChatGPT recebe ferrame
   assert.match(tools[0].input!,/prazo de reembolso/);assert.match(tools[0].output,/sete dias/);
   const step=run.trace.find(t=>t.type==="step" && t.nodeId===f.graph.nodes[1].id)!;
   assert.equal(step.knowledge?.available?.length,2);assert.equal(step.knowledge?.count,1);assert.deepEqual(step.knowledge?.bases?.map(b=>b.baseId),[refunds.id]);
-  const saved=flows.getRun(run.id).trace.find(t=>t.type==="step" && t.nodeId===f.graph.nodes[1].id)!;
+  const saved=(await flows.getRun(run.id)).trace.find(t=>t.type==="step" && t.nodeId===f.graph.nodes[1].id)!;
   assert.equal(saved.knowledge?.chunks?.length,1);
   assert.equal(saved.knowledge?.chunks?.[0].pageContent,"O reembolso pode ser solicitado em sete dias.");
   assert.equal(saved.knowledge?.chunks?.[0].baseId,refunds.id);
@@ -105,7 +109,7 @@ test("modelo pode consultar várias bases ou nenhuma; OpenRouter usa o ciclo rea
   });
   try {
     for(const kind of ["agent","llm"] as const){
-      const f=flow(kind,{model:"openrouter:fixture"});const before=embeddingCalls;rounds=0;mode="both";
+      const f=(await flow(kind,{model:"openrouter:fixture"}));const before=embeddingCalls;rounds=0;mode="both";
       const result=await startRun(f.id,"Compare reembolso e prazo de entrega.");
       assert.equal(result.status,"completed");assert.equal(rounds,2);assert.equal(embeddingCalls,before+2);
       assert.equal(result.trace.filter(t=>t.type==="tool").length,2);assert.match(result.output,/Manual Reembolsos/);assert.doesNotMatch(result.output,/Manual Entregas/);
@@ -129,12 +133,12 @@ test("compatibilidade: seleção antiga também vira ferramenta; array vazio rem
 
 test("validação e vínculos incluem Agent/LLM em fluxos salvos e não publicados",async()=>{
   for(const kind of ["agent","llm"] as const){
-    const f=flow(kind);assert.ok(store.knowledgeBaseUsages(refunds.id).some(x=>x.id===f.id));assert.ok(store.knowledgeBaseUsages(shipping.id).some(x=>x.id===f.id));
+    const f=(await flow(kind));assert.ok((await store.knowledgeBaseUsages(refunds.id)).some(x=>x.id===f.id));assert.ok((await store.knowledgeBaseUsages(shipping.id)).some(x=>x.id===f.id));
     await assert.rejects(runtime.deleteKnowledgeBase(shipping.id),/vinculada/);
-    f.published=null;abrirBanco().prepare("UPDATE flows SET body=? WHERE id=?").run(JSON.stringify(f),f.id);
-    assert.ok(store.knowledgeBaseUsages(shipping.id).some(x=>x.id===f.id));
+    await flows.publishFlow(f.id, false);
+    assert.ok((await store.knowledgeBaseUsages(shipping.id)).some(x=>x.id===f.id));
     f.graph.nodes[1].data.config.knowledgeBases="[]";
-    flows.saveFlow(f.id,{name:f.name,description:"",graph:f.graph});assert.ok(!store.knowledgeBaseUsages(shipping.id).some(x=>x.id===f.id));
+    (await flows.saveFlow(f.id,{name:f.name,description:"",graph:f.graph}));assert.ok(!(await store.knowledgeBaseUsages(shipping.id)).some(x=>x.id===f.id));
     await flows.deleteFlow(f.id);
     for(const rows of [[{...bindings[0],description:""}],[{...bindings[0],description:"x".repeat(1001)}],[bindings[0],bindings[0]],[{...bindings[0],baseId:""}],[{...bindings[0],references:"true"}],[{...bindings[0],topK:0}],[{...bindings[0],minScore:"0"}],Array(11).fill(bindings[0])]){
       const graph=template();graph.nodes[1].data.kind=kind;graph.nodes[1].data.config.knowledgeBases=JSON.stringify(rows);
@@ -147,7 +151,7 @@ test("validação e vínculos incluem Agent/LLM em fluxos salvos e não publicad
 test("consulta sem resultados e erro de base indisponível ficam visíveis como resultado ou falha da ferramenta",async t=>{
   t.mock.method(chatGPT(),"account",async()=>({account:{type:"chatgpt",email:"fixture@example.com"},login:null,error:null}));
   const empty=await base("Sem resultados","Consultar dados financeiros.","Documento financeiro.");
-  store.updateKnowledgeBase(empty.id,{config:{...empty.config,retrieval:{topK:4,minScore:0,metadataFilter:{missing:true}}}});
+  (await store.updateKnowledgeBase(empty.id,{config:{...empty.config,retrieval:{topK:4,minScore:0,metadataFilter:{missing:true}}}}));
   const binding={baseId:empty.id,description:"Consultar dados financeiros.",references:true};
   let failed=false;
   t.mock.method(chatGPT(),"run",async(options:Parameters<ReturnType<typeof chatGPT>["run"]>[0])=>{
@@ -155,9 +159,9 @@ test("consulta sem resultados e erro de base indisponível ficam visíveis como 
     else assert.match(await options.tools![0].call({consulta:"saldo"}),/Nenhum trecho/);
     return "Não há informação disponível para responder.";
   });
-  const f=flow("agent",{knowledgeBases:JSON.stringify([binding])});
+  const f=(await flow("agent",{knowledgeBases:JSON.stringify([binding])}));
   const none=await startRun(f.id,"Qual o saldo?");assert.equal(none.trace.find(t=>t.type==="tool")?.status,"completed");assert.doesNotMatch(none.output,/Referências/);
-  store.touchKnowledgeBase(empty.id);failed=true;
+  await store.saveKnowledgeBaseRecord({ ...await store.getKnowledgeBase(empty.id), status: "dirty" });failed=true;
   const failure=await startRun(f.id,"Qual o saldo?");assert.equal(failure.trace.find(t=>t.type==="tool")?.status,"failed");assert.doesNotMatch(failure.output,/Referências/);
   await flows.deleteFlow(f.id);await runtime.deleteKnowledgeBase(empty.id);
 });

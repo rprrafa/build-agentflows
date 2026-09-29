@@ -8,7 +8,7 @@ Referência inspecionada: `/Users/rafael/Desktop/projetos/Flowise-main/packages/
 
 - [x] Catálogo dos 20 extratores, extração real e contratos testados.
 - [x] Persistência, credenciais cifradas, fontes, fragmentos editáveis, reprocessamento e exclusão.
-- [x] Embeddings OpenAI/compatível e Ollama; vetores locais persistidos e Qdrant; Record Manager SQLite/sem controle, deduplicação e limpeza.
+- [x] Embeddings OpenAI/compatível e Ollama; vetores locais persistidos e Qdrant; Record Manager interno/sem controle, deduplicação e limpeza.
 - [x] Indexação com progresso/histórico, recuperação de erros e teste de busca.
 - [x] Seleção da base e controle de referências no Agente, execução dos dois motores com respostas controladas nos testes.
 - [x] Interface completa na biblioteca/tela inicial; celular e temas claro/escuro.
@@ -21,7 +21,7 @@ Bibliotecas: parsers de documentos (officeparser, unpdf, csv-parse, cheerio), te
 
 - `lib/knowledge-catalog.ts`: exatamente os 20 nomes pedidos; teste compara a lista inteira na ordem alfabética.
 - `lib/knowledge-loaders.ts` e `scripts/fixtures/knowledge`: parsers reais de texto, CSV, JSON, PDF e Office; conectores cloud/S3/E2B com contratos exercitados em `lib/knowledge.test.ts`, incluindo JSONL do Spider.
-- `lib/knowledge-store.ts` e `knowledge-index.ts`: credenciais cifradas, isolamento entre bases, índice persistente, troca após sucesso, registros de reaproveitamento, busca, reindexação e exclusão; cenários de falha e concorrência testados.
+- `lib/tenant-knowledge.ts` e `tenant-knowledge-index.ts`: credenciais cifradas, isolamento entre bases, índice persistente, troca após sucesso, registros de reaproveitamento, busca, reindexação e exclusão; cenários de falha e concorrência testados.
 - `lib/knowledge-agent.ts`, `flow-runtime.ts` e `components/KnowledgeAgentFields.tsx`: contexto entregue aos motores e referências opcionais, grafo persistido e validação na gravação.
 - Navegador local, build standalone, dados temporários: criação, extração Plain Text e upload PDF real, revisão, configuração completa, indexação, consulta, histórico, edição e reindexação. Seleção e referências no Agente; telas de 1440 px e 390 px, claro/escuro, sem erro de JavaScript e sem overflow horizontal após o ajuste do menu.
 - HTTP real no standalone: health/status 200; rotas knowledge sem sessão retornam 401; API de setup antiga continua 410 conforme contrato preexistente.

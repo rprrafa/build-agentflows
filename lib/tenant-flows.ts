@@ -10,7 +10,7 @@ import { knowledgeSettings } from "./knowledge-settings";
 
 async function validateReferences(sql: Sql, owner: string, graph: Graph) {
   await sql.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [owner]);
-  const credentials = new Set(graph.nodes.flatMap((node) => readToolCards(node.data.config.tools || "", node.data.config.toolCards).map((card) => card.credentialId).filter((id): id is string => !!id && !id.startsWith("default:"))));
+  const credentials = new Set(graph.nodes.flatMap((node) => readToolCards(node.data.config.tools || "", node.data.config.toolCards).map((card) => card.credentialId).filter((id): id is string => !!id)));
   for (const id of credentials) {
     if (!(await sql.query("SELECT 1 FROM credentials WHERE user_id=$1 AND key=$2", [owner, `TOOL_ACCOUNT_${id}`])).rows.length) throw new FlowError("Credencial não encontrada nesta conta.", 404);
   }

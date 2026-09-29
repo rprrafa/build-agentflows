@@ -1,4 +1,8 @@
-import test from "node:test";
+import nodeTest, { type TestContext } from "node:test";
+import { createTenantTestContext } from "../scripts/tenant-test-context";
+const testTenant = await createTenantTestContext();
+function test(name: string, action: (t: TestContext) => unknown | Promise<unknown>) { return nodeTest(name, async t => { await testTenant.asTenant(() => action(t)); }); }
+nodeTest.after(testTenant.close);
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -7,7 +11,7 @@ const dir = mkdtempSync(join(tmpdir(), "agentflows-openrouter-"));
 process.env.DATA_DIR = dir;
 const { setConfig } = await import("./store");
 const { runOpenRouter, isOpenRouterModel } = await import("./openrouter");
-test.after(() => rmSync(dir, { recursive: true, force: true }));
+nodeTest.after(() => rmSync(dir, { recursive: true, force: true }));
 function fakeFetch(answers: unknown[]) {
   const calls: { body: Record<string, unknown>; headers: Record<string, string> }[] = [];
   const fetcher = (async (_url: string | URL | Request, init?: RequestInit) => {

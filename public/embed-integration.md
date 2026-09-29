@@ -4,7 +4,7 @@ O usuário conversa normalmente. Configuração técnica fica em **Implantar →
 
 ## Instalação
 
-1. Salve o fluxo no editor (o salvamento já publica ou atualiza a v1). Cadastre as origens exatas autorizadas (por exemplo `https://stage.example.com`) e salve o chat; a ativação é automática. Sem domínios no fluxo, localhost e 127.0.0.1 são aceitos em qualquer porta, sujeitos à lista global.
+1. Salve o fluxo no editor (o salvamento já publica ou atualiza a v1). Cadastre as origens exatas autorizadas (por exemplo `https://stage.example.com`) e salve o chat; a ativação é automática. Sem domínios no fluxo, localhost e 127.0.0.1 são aceitos em qualquer porta, sujeitos à lista da conta.
 2. A chave do servidor é criada internamente ao salvar ou abrir o preview. Para provisionar o backend de uma aplicação externa, um administrador pode gerar uma nova chave pela API autenticada: `POST /api/flows/ID_DO_FLUXO/embed`, com corpo `{}`. A resposta contém `key`; essa operação substitui a chave anterior e invalida os tickets existentes. Guarde-a somente no backend da aplicação alvo, nunca no script público.
 3. Implemente `/api/chat-access` na aplicação alvo. Autentique o usuário com a sessão já existente e confira se ele pode usar este fluxo. Não aceite `subject`, `flowId` ou `origin` arbitrários do navegador.
 4. Esse endpoint chama, de servidor para servidor:
@@ -41,13 +41,13 @@ Em React, monte no efeito do layout e chame `chat.destroy()` no cleanup. Destrua
 
 ## Sessões e execução
 
-A referência da conversa, rascunho e estado aberto/fechado ficam em `sessionStorage` da página hospedeira, separados por origem do serviço e fluxo. As mensagens, aprovações, tarefas e comandos ficam no SQLite do Build Agentflows. O ID da conversa não concede acesso: cada chamada valida o ticket e seu usuário, origem e fluxo. Recarregar restaura o chat; mensagens são identificadas para evitar tarefas duplicadas em novas tentativas de envio.
+A referência da conversa, rascunho e estado aberto/fechado ficam em `sessionStorage` da página hospedeira, separados por origem do serviço e fluxo. As mensagens, aprovações, tarefas e comandos ficam no PostgreSQL, vinculados ao usuário proprietário do fluxo. O ID da conversa não concede acesso: cada chamada valida o ticket e seu usuário, origem e fluxo. Recarregar restaura o chat; mensagens são identificadas para evitar tarefas duplicadas em novas tentativas de envio.
 
-A API aceita a mensagem e retorna sem aguardar a IA. Um worker local consulta a fila persistida. O widget sincroniza o snapshot por polling curto; não mantém uma requisição de IA aberta durante toda a tarefa. A execução usa o último fluxo salvo (v1), capturado ao iniciar. Salvar também publica ou atualiza a v1 para as integrações configuradas. Novos salvamentos atualizam as próximas execuções, sem alterar tarefas em andamento.
+A API aceita a mensagem e retorna sem aguardar a IA. Workers dedicados consultam a fila persistida no PostgreSQL, com notificações Redis. O widget sincroniza o snapshot por polling curto; não mantém uma requisição de IA aberta durante toda a tarefa. A execução usa o último fluxo salvo (v1), capturado ao iniciar. Salvar também publica ou atualiza a v1 para as integrações configuradas. Novos salvamentos atualizam as próximas execuções, sem alterar tarefas em andamento.
 
-Uma aprovação humana libera o worker e mantém o checkpoint. Se o servidor reiniciar no meio de uma operação, a tarefa pede revisão antes de repetir a etapa; não há replay automático de efeitos externos. São permitidas até duas retomadas confirmadas por tarefa. O tempo ativo acumulado e o limite de comandos não são zerados ao retomar. Cancelar bloqueia novas etapas, solicita interrupção do modelo e invalida comandos pendentes; efeitos já realizados não são desfeitos.
+Uma aprovação humana libera o worker e mantém o checkpoint. Se o servidor reiniciar no meio de uma operação, a tarefa pede revisão antes de repetir a etapa; não há replay automático de efeitos externos. A decisão humana só pode ser confirmada uma vez por checkpoint e sua continuação também entra na fila. Cancelar bloqueia novas etapas, solicita interrupção do modelo e invalida comandos pendentes; efeitos já realizados não são desfeitos.
 
-**Modelo de implantação:** processo Node persistente, um único processo/instância por banco SQLite e volume persistente em `DATA_DIR`. Não usar este worker embutido em funções serverless ou múltiplas réplicas. Uma fila distribuída com leases seria necessária para essa evolução. Provedores e ferramentas ainda podem ter limites menores por chamada; o orçamento total não elimina esses limites. Não há integração GitHub ou política de retry de deploy nesta entrega do chat.
+**Modelo de implantação:** aplicação Node e workers dedicados, PostgreSQL, Redis e volume persistente em `DATA_DIR`. Todos os workers compartilham o limite de uma tarefa ativa por usuário e duas na instalação. Cancelar mantém a vaga ocupada até confirmação do worker ou expiração da autorização. Provedores e ferramentas podem ter limites menores por chamada.
 
 “Nova conversa” fica disponível após concluir/cancelar a tarefa ativa. A conversa anterior permanece no histórico administrativo do fluxo. Uma nova sessão não move tarefas da anterior.
 

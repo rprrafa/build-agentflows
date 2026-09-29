@@ -4,7 +4,6 @@
 import { randomBytes } from "node:crypto";
 import { channelKey } from "./channel-auth";
 import { getConfig, setConfig, mascarar, configTransaction } from "./store";
-import { tenantId } from "./tenant-context";
 import { conexaoAutorizada, desconectar as desautorizar } from "./mcp-oauth";
 import { FlowError } from "./flow-store";
 import { TOOL_CREDENTIAL_KEYS } from "./tool-credentials";
@@ -69,7 +68,7 @@ export function salvarCampos(campos: unknown, aceiteWhatsApp?: unknown) {
       throw new FlowError("Cole uma chave de imagem válida, sem quebras de linha.");
   }
   const values = campos as Record<string, string | null>;
-  const provider = (!tenantId() && process.env.WHATSAPP_PROVEDOR) || ("WHATSAPP_PROVEDOR" in values ? values.WHATSAPP_PROVEDOR : provedorWhatsApp());
+  const provider = ("WHATSAPP_PROVEDOR" in values ? values.WHATSAPP_PROVEDOR : provedorWhatsApp());
   const touchesWhatsApp = entries.some(([k]) => /^(WHATSAPP_|ZAPI_|ZAPPERHUB_)/.test(k));
   const accepted = aceiteWhatsApp as { provedor?: string; versao?: string } | undefined;
   const requires = touchesWhatsApp && (provider === "zapi" || provider === "zapperhub");
@@ -111,9 +110,6 @@ export function servidoresMCP(): ServidorMCP[] {
   } catch {
     lista = [];
   }
-  // Conexão antiga (bloco Agente da primeira versão) aparece como um servidor chamado Ferramentas.
-  if (getConfig("FERRAMENTAS_URL") && !lista.some((s) => s.prefixo === "FERRAMENTAS"))
-    lista.unshift({ prefixo: "FERRAMENTAS", nome: "Ferramentas" });
   return lista;
 }
 export function servidorMCP(prefixo: string) {
@@ -134,7 +130,7 @@ export function adicionarServidorMCP(nome: unknown, url: unknown, codigo?: unkno
   if (codigo != null && (typeof codigo !== "string" || codigo.length > 10000))
     throw new FlowError("Informe um código válido.");
   const prefixo = "MCP_" + randomBytes(3).toString("hex").toUpperCase();
-  const lista = servidoresMCP().filter((s) => s.prefixo !== "FERRAMENTAS" || getConfig("FERRAMENTAS_URL"));
+  const lista = servidoresMCP();
   setConfig(CHAVE_SERVIDORES, JSON.stringify([...lista, { prefixo, nome: nome.trim() }]));
   setConfig(`${prefixo}_URL`, u.toString());
   if (codigo) setConfig(`${prefixo}_CODIGO`, codigo);

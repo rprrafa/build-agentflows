@@ -1,5 +1,6 @@
 // Isolated integration checks. Requires disposable Postgres+pgvector; Chroma is optional.
 // KNOWLEDGE_TEST_POSTGRES=... KNOWLEDGE_TEST_CHROMA=... node --import ./scripts/gancho-ts.mjs scripts/verify-knowledge-services.mjs
+import { createTenantTestContext } from "./tenant-test-context.ts";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,8 +16,8 @@ assert.ok(
 );
 const dir = mkdtempSync(join(tmpdir(), "knowledge-services-"));
 process.env.DATA_DIR = dir;
-const store = await import("../lib/knowledge-store.ts"),
-  runtime = await import("../lib/knowledge-index.ts");
+const store = await import("../lib/knowledge-service.ts"),
+  runtime = await import("../lib/knowledge-index-service.ts");
 const { DEFAULT_INDEX, DEFAULT_SPLITTER } =
   await import("../lib/knowledge-types.ts");
 let embeddings = 0;
@@ -46,6 +47,8 @@ const db = new Client({ connectionString: postgres });
 await db.connect();
 await db.query("CREATE EXTENSION IF NOT EXISTS vector");
 const created = [];
+const tenant = await createTenantTestContext();
+try { await tenant.asTenant(async () => {
 try {
   const { supabaseSetupSql } = await import("../lib/knowledge-supabase-setup.ts");
   await db.query(supabaseSetupSql(3, { tableName: "knowledge_test_supabase", queryName: "knowledge_test_match" }));
@@ -56,9 +59,9 @@ try {
   assert.equal(match.rows[0].similarity, 1);
   console.log("Supabase: SQL de preparação executado no pgvector; busca e filtro por base aprovados.");
   for (const provider of ["postgres", ...(chroma ? ["chroma"] : [])]) {
-    const base = store.createKnowledgeBase({ name: `Integração ${provider}` });
+    const base = await store.createKnowledgeBase({ name: `Integração ${provider}` });
     created.push(base.id);
-    store.updateKnowledgeBase(base.id, {
+    await store.updateKnowledgeBase(base.id, {
       config: {
         ...structuredClone(DEFAULT_INDEX),
         embeddings: {
@@ -79,7 +82,7 @@ try {
         },
       },
     });
-    const source = store.saveKnowledgeSource(base.id, {
+    const source = await store.saveKnowledgeSource(base.id, {
       name: "Políticas",
       loader: "plain",
       config: { text: "Política de reembolso em 7 dias. Entrega nacional." },
@@ -118,10 +121,7 @@ try {
     );
     await runtime.deleteKnowledgeBase(base.id);
     assert.equal(
-      store
-        .knowledgeDb()
-        .prepare("SELECT count(*) as n FROM knowledge_cleanup WHERE base_id=?")
-        .get(base.id).n,
+      (await tenant.db.query("SELECT count(*)::int AS n FROM knowledge_cleanup WHERE user_id=$1 AND base_id=$2", [tenant.owner, base.id])).rows[0].n,
       0,
     );
     console.log(
@@ -131,10 +131,13 @@ try {
 } finally {
   for (const id of created) {
     try {
-      store.getKnowledgeBase(id);
+      await store.getKnowledgeBase(id);
       await runtime.deleteKnowledgeBase(id);
     } catch {}
   }
+}
+}); } finally {
+  await tenant.close();
   await db.query("DROP TABLE IF EXISTS knowledge_test_records");
   await db.query("DROP FUNCTION IF EXISTS knowledge_test_match(vector, int, jsonb)");
   await db.query("DROP TABLE IF EXISTS knowledge_test_supabase");

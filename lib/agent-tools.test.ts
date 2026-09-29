@@ -2,11 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { selectedTools, readToolCards, replaceToolCard, type ToolCard } from "./agent-tools";
 
-test("fluxos antigos ganham cartões por ferramenta e servidor sem ampliar permissões", () => {
-  const value = "interno:calculadora,buscar,buscar,mcp:CRM:buscar,mcp:CRM:criar";
-  assert.deepEqual(selectedTools(value), ["interno:calculadora", "mcp:FERRAMENTAS:buscar", "mcp:CRM:buscar", "mcp:CRM:criar"]);
+test("ações selecionadas se agrupam por ferramenta e servidor sem ampliar permissões", () => {
+  const value = "interno:calculadora,mcp:CRM:buscar,mcp:CRM:buscar,mcp:CRM:criar";
+  assert.deepEqual(selectedTools(value), ["interno:calculadora", "mcp:CRM:buscar", "mcp:CRM:criar"]);
   assert.deepEqual(readToolCards(value).map(({ kind, target }) => ({ kind, target })), [
-    { kind: "tool", target: "interno:calculadora" }, { kind: "mcp", target: "FERRAMENTAS" }, { kind: "mcp", target: "CRM" },
+    { kind: "tool", target: "interno:calculadora" }, { kind: "mcp", target: "CRM" },
   ]);
   assert.deepEqual(readToolCards(value, "inválido"), readToolCards(value));
 });

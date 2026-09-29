@@ -1,21 +1,24 @@
-import test from "node:test";
+import nodeTest, { type TestContext } from "node:test";
+import { createTenantTestContext } from "../scripts/tenant-test-context";
+const testTenant = await createTenantTestContext();
+function test(name: string, action: (t: TestContext) => unknown | Promise<unknown>) { return nodeTest(name, async t => { await testTenant.asTenant(() => action(t)); }); }
+nodeTest.after(testTenant.close);
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 const dir = mkdtempSync(join(tmpdir(), "agentflows-tools-"));
 process.env.DATA_DIR = dir;
-const { setConfig } = await import("./store");
 const tools = await import("./tools");
-const store = await import("./flow-store");
+const store = await import("./flow-service");
 const { block } = await import("./flow-types");
 const { chatGPT } = await import("./chatgpt");
-chatGPT().account = async () => ({
+(await testTenant.asTenant(chatGPT)).account = async () => ({
   account: { type: "chatgpt", email: "t@example.com", planType: "plus" },
   login: null,
   error: null,
 });
-test.after(() => rmSync(dir, { recursive: true, force: true }));
+nodeTest.after(() => rmSync(dir, { recursive: true, force: true }));
 test("calculadora resolve expressões sem executar código", () => {
   assert.equal(tools.calculate("(1200*0.15)+80"), 260);
   assert.equal(tools.calculate("2^3^2"), 512);
@@ -32,10 +35,9 @@ test("requisição HTTP recusa endereços internos", async () => {
   await assert.rejects(() => tools.fetchText("http://127.0.0.1:3000/x"), /não pode ser acessado/);
   await assert.rejects(() => tools.fetchText("ftp://exemplo.com"), /não pode ser acessado/);
 });
-test("catálogo agrupa ferramentas prontas e de cada servidor; ids antigos apontam para Ferramentas", async () => {
+test("catálogo agrupa ferramentas e exige identificação explícita do servidor", async () => {
   const fetch0 = globalThis.fetch;
-  setConfig("FERRAMENTAS_URL", "https://tools.example/mcp");
-  setConfig("FERRAMENTAS_CODIGO", "abc");
+  const server = (await import("./conexoes")).adicionarServidorMCP("Ferramentas", "https://tools.example/mcp", "abc");
   const crm = (await import("./conexoes")).adicionarServidorMCP("CRM", "https://crm.example/mcp", "xyz");
   globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
     const b = JSON.parse(String(init?.body));
@@ -59,26 +61,28 @@ test("catálogo agrupa ferramentas prontas e de cada servidor; ids antigos apont
     assert.equal(builtin.find((t) => t.name === "tavily")?.credentials?.[0].chave, "TOOL_TAVILY_KEY");
     assert.equal(builtin.find((t) => t.name === "calculadora")?.configured, true);
     assert.equal(groups[2].tools[0].id, `mcp:${crm.prefixo}:criar_contato`);
-    const resolved = await tools.resolveTools(["buscar", `mcp:${crm.prefixo}:criar_contato`, "interno:calculadora"]);
+    const resolved = await tools.resolveTools([`mcp:${server.prefixo}:buscar`, `mcp:${crm.prefixo}:criar_contato`, "interno:calculadora"]);
     assert.deepEqual(resolved.map((t) => t.name), ["calculadora", "buscar", "criar_contato"]);
     assert.match(await resolved[1].call({ q: 1 }), /"name":"buscar"/);
     assert.equal(await resolved[0].call({ expressao: "2+2" }), "4");
+    await assert.rejects(() => tools.resolveTools(["buscar"]), /vinculada/);
     await assert.rejects(() => tools.resolveTools(["interno:enviar_whatsapp"]), /não está disponível/);
-    await assert.rejects(() => tools.resolveTools(["mcp:FERRAMENTAS:inexistente"]), /não está disponível/);
+    await assert.rejects(() => tools.resolveTools([`mcp:${server.prefixo}:inexistente`]), /não está disponível/);
   } finally {
     globalThis.fetch = fetch0;
     (await import("./conexoes")).removerServidorMCP(crm.prefixo);
+    (await import("./conexoes")).removerServidorMCP(server.prefixo);
   }
 });
 test("executar_fluxo roda um fluxo publicado pelo nome", async () => {
-  const f = store.createFlow("Resumo");
+  const f = (await store.createFlow("Resumo"));
   const g = {
     nodes: [block("start", "inicio", 0, 0), block("end", "fim", 0, 0)],
     edges: [{ id: "1", source: "inicio", target: "fim" }],
   };
   g.nodes[1].data.config.text = "Recebido: {{input}}";
-  store.saveFlow(f.id, { name: f.name, description: "", graph: g });
-  store.publishFlow(f.id);
+  (await store.saveFlow(f.id, { name: f.name, description: "", graph: g }));
+  (await store.publishFlow(f.id));
   const out = await tools.callTool("interno:executar_fluxo", { fluxo: "resumo", entrada: "olá" });
   assert.deepEqual(JSON.parse(out).output, "Recebido: olá");
   await assert.rejects(() => tools.callTool("interno:executar_fluxo", { fluxo: "nada", entrada: "x" }), /não encontrado/);

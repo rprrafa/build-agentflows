@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## Em desenvolvimento — 29/09/2026
+
+- Aplicação exclusivamente multi-tenant com PostgreSQL/Drizzle; removidos armazenamento SQLite, fallbacks globais e aliases de conexões da primeira versão.
+- Configurações, credenciais, fluxos, conhecimento, anexos e arquivos exigem contexto autenticado do usuário. Registro interno de conhecimento renomeado com migração das bases/índices existentes.
+- Corrigida a comparação de configurações JSONB para que mudanças apenas na busca não invalidem vetores. Testes migrados para contas e bancos isolados.
+- Validação: 307 testes gerais, 104 com PostgreSQL servidor, build e lint sem erros; Docker com dois workers, limites por usuário, reinício/volumes e navegador desktop/celular.
+
 ## 0.17.1 — 25/09/2026
 
 - Removido o acesso à Base de Conhecimento da tela Fluxo Agêntico.

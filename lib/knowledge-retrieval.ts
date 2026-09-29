@@ -45,5 +45,11 @@ export function indexingConfigIdentity(config: IndexConfig) {
   normalized.recordManager.tableName ||= "agentflows_records";
   normalized.recordManager.cleanup ??= "full";
   normalized.recordManager.sourceIdKey ||= undefined;
-  return JSON.stringify(normalized);
+  // JSONB reorders object keys; compare values independently of serialization order.
+  function ordered(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(ordered);
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, ordered(item)]));
+    return value;
+  }
+  return JSON.stringify(ordered(normalized));
 }

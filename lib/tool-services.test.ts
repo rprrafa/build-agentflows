@@ -1,4 +1,8 @@
-import test from "node:test";
+import nodeTest, { type TestContext } from "node:test";
+import { createTenantTestContext } from "../scripts/tenant-test-context";
+const testTenant = await createTenantTestContext();
+function test(name: string, action: (t: TestContext) => unknown | Promise<unknown>) { return nodeTest(name, async t => { await testTenant.asTenant(() => action(t)); }); }
+nodeTest.after(testTenant.close);
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -10,10 +14,11 @@ const { builtinTools, resolveTools, callTool } = await import("./tools");
 const { salvarCampos } = await import("./conexoes");
 const { serviceToken } = await import("./tool-services");
 const api = await import("../app/api/tools/route");
-test.after(() => rmSync(dir, { recursive: true, force: true }));
+nodeTest.after(() => rmSync(dir, { recursive: true, force: true }));
 
-test("catálogo inclui as 24 ferramentas pedidas e compartilha a credencial sem expor segredos", async (t) => {
+nodeTest("catálogo inclui as 24 ferramentas pedidas e compartilha a credencial sem expor segredos", async (t) => {
   const tenant = await (await import("../scripts/tenant-test-context")).createTenantTestContext(); t.after(tenant.close);
+  await tenant.asTenant(async () => {
   const expected = ["BraveSearch API", "Browserless MCP", "Calculator", "Code Interpreter by E2B", "Exa Search", "Gmail", "Google Calendar", "Google Custom Search", "Google Drive", "Google Sheets", "Microsoft Outlook", "Microsoft Teams", "OpenAPI Toolkit", "Read File", "Request Get", "Request Post", "SearchApi", "SearXNG", "Serp API", "Serper", "Slack MCP", "Tavily", "Web Browser", "Write File"];
   const labels = builtinTools().map((t) => t.label);
   for (const label of expected) assert.ok(labels.includes(label), label);
@@ -25,6 +30,7 @@ test("catálogo inclui as 24 ferramentas pedidas e compartilha a credencial sem 
   assert.deepEqual(a.map((t) => t.name), b.map((t) => t.name));
   assert.equal(await a[1].call({ expressao: "6*7" }), "42");
   assert.equal(await b[1].call({ expressao: "2+3" }), "5");
+  });
   const res = await tenant.connect(() => api.PUT(tenant.request("/api/tools", { method: "PUT", body: JSON.stringify({ campos: { WHATSAPP_PROVEDOR: "zapi" } }) })));
   assert.equal(res.status, 400);
 });
@@ -35,14 +41,14 @@ test("arquivos compartilhados entre agentes preservam conteúdo e recusam escape
   assert.equal(await reader.call({ caminho: "relatorios/hoje.txt" }), "Olá, StartSe");
   for (const caminho of ["../app.sqlite", "/etc/passwd", "relatorios/../../chatgpt/auth.json", "a\\..\\b"]) await assert.rejects(() => reader.call({ caminho }), /caminho/i);
   writeFileSync(join(dir, "secret"), "secret");
-  symlinkSync(join(dir, "secret"), join(dir, "tool-files", "alias"));
+  symlinkSync(join(dir, "secret"), join(dir, "users", testTenant.owner, "tool-files", "alias"));
   await assert.rejects(() => reader.call({ caminho: "alias" }), /simbólicos/);
   await assert.rejects(() => writer.call({ caminho: "alias", conteudo: "x" }), /simbólicos/);
   await assert.rejects(() => writer.call({ caminho: "grande", conteudo: "x".repeat(1024 * 1024 + 1) }), /1 MB/);
 });
 
 test("Google e Microsoft usam as contas salvas, rotas corretas e formatos de envio", async () => {
-  salvarCampos({ TOOL_MICROSOFT_TOKEN: "ms-secret" });
+  salvarCampos({ TOOL_GOOGLE_TOKEN: "google-secret-token", TOOL_MICROSOFT_TOKEN: "ms-secret" });
   const fetch0 = globalThis.fetch;
   const calls: { url: string; init?: RequestInit }[] = [];
   globalThis.fetch = (async (url, init) => { calls.push({ url: String(url), init }); return Response.json({ ok: true }); }) as typeof fetch;

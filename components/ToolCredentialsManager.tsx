@@ -35,7 +35,7 @@ export function ToolCredentialsManager() {
       {!loading && !items.length && <p>Nenhuma credencial salva. Você também pode criar uma ao adicionar uma ferramenta no agente.</p>}
       {!!items.length && !shown.length && <p>Nenhuma conexão encontrada para essa busca.</p>}
       {shown.map((c) => <div className="credential-manager-row" key={c.id}><div className="credential-manager-identity"><ToolLogo id={toolFor(c)?.id || `interno:${c.provider}`} /><div><strong>{c.name}</strong><small>{toolFor(c)?.name || c.providerLabel} · {c.configured ? "Credencial salva" : "Revisar conexão"}</small></div></div><div className="studio-actions">
-        <IconButton icon="pencil" label={`Editar credencial ${c.name}`} onClick={() => setEditor(c)} /><IconButton icon="trash" label={`Excluir credencial ${c.name}`} disabled={c.locked} onClick={() => { setError(""); setRemoving(c); }} />
+        <IconButton icon="pencil" label={`Editar credencial ${c.name}`} onClick={() => setEditor(c)} /><IconButton icon="trash" label={`Excluir credencial ${c.name}`} onClick={() => { setError(""); setRemoving(c); }} />
       </div></div>)}
       {error && !removing && <div role="alert"><p className="studio-error">{error}</p><button type="button" className="tool-text-button" onClick={() => void load()}>Tentar novamente</button></div>}
     </div>

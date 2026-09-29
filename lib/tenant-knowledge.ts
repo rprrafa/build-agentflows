@@ -123,7 +123,7 @@ export async function getKnowledgePrivate(baseId: string, resourceId: string) {
 }
 async function credentialReferences(sql: Sql, owner: string, config: IndexConfig) {
   for (const id of [config.embeddings.credentialId, config.vectorStore.postgres?.credentialId, config.recordManager.postgres?.credentialId]) {
-    if (id && !id.startsWith("default:") && !(await sql.query("SELECT 1 FROM credentials WHERE user_id=$1 AND key=$2", [owner, `TOOL_ACCOUNT_${id}`])).rows.length)
+    if (id && !(await sql.query("SELECT 1 FROM credentials WHERE user_id=$1 AND key=$2", [owner, `TOOL_ACCOUNT_${id}`])).rows.length)
       throw new FlowError("Credencial não encontrada nesta conta.", 404);
   }
 }

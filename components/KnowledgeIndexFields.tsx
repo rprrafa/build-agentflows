@@ -312,7 +312,7 @@ export function KnowledgeIndexFields({
           onChange({
             ...config,
             recordManager: {
-              provider: id as "sqlite" | "postgres",
+              provider: id as "internal" | "postgres",
               cleanup: record.cleanup ?? "full",
               sourceIdKey: record.sourceIdKey,
               namespace: "agentflows",

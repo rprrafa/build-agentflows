@@ -9,7 +9,7 @@ Acesso pela tela inicial ou pelo menu **Base de Conhecimento**. A implementaçã
 3. **Revisar fragmentos:** pesquise, edite o texto e os metadados ou remova trechos. A divisão pode ser recursiva ou por separador, com tamanho e sobreposição configuráveis. Reextrair substitui os fragmentos da fonte, inclusive suas edições manuais.
 4. **Embeddings:** escolha Gemini, OpenAI, VoyageAI ou Ollama, modelo e conexão compartilhada no menu Credenciais. Essa conexão é independente do modelo do Agente. Uma assinatura ChatGPT não é usada como credencial de embeddings.
 5. **Vector Store:** escolha Faiss local ou um dos dez serviços remotos descritos na [comparação de provedores](KNOWLEDGE-FLOWISE.md). Cada base e cada geração têm isolamento próprio.
-6. **Record Manager:** use SQLite ou Postgres para reaproveitar embeddings da indexação anterior. O reaproveitamento exige texto, provedor, endereço, modelo e preparação iguais. Metadados editados permanecem associados ao trecho, mesmo quando seu vetor é reaproveitado.
+6. **Record Manager:** use o registro interno ou Postgres para reaproveitar embeddings da indexação anterior. O reaproveitamento exige texto, provedor, endereço, modelo e preparação iguais. Metadados editados permanecem associados ao trecho, mesmo quando seu vetor é reaproveitado.
 7. **Indexar base:** a nova geração só fica disponível após a conclusão. O histórico informa quantos embeddings foram gerados e reaproveitados. Alterações nas fontes e na configuração de indexação exigem nova indexação antes de consultar. Top K, similaridade mínima, filtro e estratégia de distância são aplicados ao salvar, sem reindexar.
 8. **Testar consulta:** digite uma pergunta para ver conteúdo, origem, metadados e pontuação dos trechos encontrados. Top K e similaridade mínima seguem os padrões salvos na etapa Vector Store. Deixe os campos de ajuste em branco para herdar ou preencha para substituir apenas neste teste.
 9. **Agente e LLM:** em Conhecimento, use **Adicionar base de conhecimento** para criar cards como os de Ferramentas. Selecione a base e descreva o conteúdo, por que é útil e quando consultar; a descrição da base é sugerida e pode ser adaptada ao bloco. Cada base vira uma ferramenta independente, com busca somente quando o modelo a chama. Ative **Retornar documentos de origem** em cada card para acrescentar suas referências à resposta. Top K e similaridade mínima herdam a base; Ajustar consulta permite substituí-los por card. O limite é 10 bases distintas por bloco.
@@ -46,7 +46,7 @@ Tokens OAuth Google são informados na fonte e precisam ser atualizados quando e
 
 ## Persistência, erros e limites
 
-- A base, suas fontes, fragmentos, vetores e histórico ficam no SQLite de `DATA_DIR`. Credenciais e arquivos de entrada são cifrados pelo armazenamento de configurações existente. Fragmentos e metadados são dados privados do aplicativo e ficam no mesmo volume persistente.
+- A base, suas fontes, fragmentos, vetores e histórico ficam no PostgreSQL, separados por usuário. Credenciais e arquivos de entrada são cifrados por conta/base/recurso. Índices FAISS ficam em diretórios privados de `DATA_DIR/users/<user_id>`, compartilhados entre web e worker.
 - As rotas `/api/knowledge/**` são administrativas e passam pela sessão existente. Nenhuma fonte ou credencial é publicada junto com a exportação do grafo: o grafo guarda somente os identificadores das bases, descrições de uso e opções de consulta.
 - Upload de até 20 arquivos, somando 10 MB. Documento remoto de até 10 MB, até 5 milhões de caracteres por extração, 10.000 documentos/fragmentos por fonte e 10.000 fragmentos por base. Fontes remotas com limite aceitam de 1 a 100 documentos e avisam quando pode haver conteúdo adicional.
 - Fragmentos de 100 a 8.000 caracteres; sobreposição menor que o tamanho. Busca de até 20.000 caracteres, com 1 a 20 resultados e pontuação mínima entre -1 e 1.
@@ -54,7 +54,7 @@ Tokens OAuth Google são informados na fonte e precisam ser atualizados quando e
 - Falhas de serviços aparecem na fonte ou no histórico. Credenciais e corpos de erro de provedores não entram nessas mensagens. Não há retorno silencioso a uma busca por palavras quando embeddings falham.
 - Excluir uma fonte remove seus vetores locais e do serviço configurado; a base fica pendente de indexação. Excluir uma base vinculada a um Agente ou LLM é recusado, com orientação para remover o vínculo.
 - Índices anteriores são removidos após a troca. Limpeza que falhou fica registrada e pode ser repetida pela interface. A limpeza processa até cinco gerações por tentativa. Os índices antigos nunca entram na consulta ativa.
-- Fontes HTTP exigem endereços públicos e fixam a conexão no endereço DNS validado. Servidores de embeddings e bancos vetoriais configurados pelo administrador podem usar rede privada, para instalações locais. Ao mudar de serviço, a credencial anterior não é encaminhada ao novo endereço.
+- Fontes HTTP exigem endereços públicos e fixam a conexão no endereço DNS validado. Servidores de embeddings e bancos vetoriais configurados pelo usuário podem usar rede privada, para instalações locais. Ao mudar de serviço, a credencial anterior não é encaminhada ao novo endereço.
 
 ## Contratos e verificação
 

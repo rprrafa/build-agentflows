@@ -11,7 +11,7 @@ export function ToolCredentialFields({ tool, credentialId, credentials, onChange
 }) {
   const [editor, setEditor] = useState<"new" | "edit" | null>(null);
   const available = credentials.filter((c) => c.provider === tool.credentialProvider);
-  const id = credentialId || available.find((c) => c.legacy)?.id || "";
+  const id = credentialId || "";
   const selected = available.find((c) => c.id === id);
   if (!tool.credentialProvider) return null;
   return <div className="tool-credential-fields">
