@@ -18,6 +18,14 @@ export function assertSameOrigin(req: Request) {
 }
 export async function limitedJson(req: Request, maxBytes = 16384): Promise<Record<string, unknown>> {
   if (!req.headers.get("content-type")?.toLowerCase().startsWith("application/json")) throw new AuthError("Envie os dados em JSON.", 415);
+  const raw = await limitedText(req, maxBytes);
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
+    return parsed;
+  } catch { throw new AuthError("Envie um formulário válido."); }
+}
+export async function limitedText(req: Request, maxBytes: number): Promise<string> {
   const reader = req.body?.getReader();
   if (!reader) throw new AuthError("Envie os dados do formulário.");
   const chunks: Uint8Array[] = [];
@@ -29,11 +37,7 @@ export async function limitedJson(req: Request, maxBytes = 16384): Promise<Recor
     if (size > maxBytes) { await reader.cancel(); throw new AuthError("Formulário muito grande.", 413); }
     chunks.push(value);
   }
-  try {
-    const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
-    return parsed;
-  } catch { throw new AuthError("Envie um formulário válido."); }
+  return Buffer.concat(chunks).toString("utf8");
 }
 export function privateJson(value: unknown, init?: ResponseInit) {
   const headers = new Headers(init?.headers);

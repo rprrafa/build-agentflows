@@ -1,22 +1,18 @@
-// Aviso de fim de ligação da ElevenLabs (post_call_transcription). Rota pública (proxy.ts),
-// validada pela assinatura HMAC com o segredo colado em Configurações. Executa o fluxo escolhido com a
-// transcrição da ligação (inbound ou outbound) para registrar, classificar ou dar sequência.
 import { getConfig } from "@/lib/store";
 import { assinaturaConfere, interpretarPosLigacao } from "@/lib/elevenlabs";
 import { processarLigacao } from "@/lib/channel-flows";
+import { channelApi } from "@/lib/channel-auth";
+import { limitedText } from "@/lib/saas-http";
+import { AuthError } from "@/lib/saas-security";
 export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
-  const corpo = await req.text();
-  const segredo = getConfig("ELEVENLABS_WEBHOOK_SECRET") || "";
-  if (!assinaturaConfere(corpo, req.headers.get("elevenlabs-signature"), segredo)) {
-    console.error("Aviso da ElevenLabs recusado: assinatura ausente ou inválida.");
-    return new Response(null, { status: 401 });
-  }
-  let body: unknown = null;
-  try {
-    body = JSON.parse(corpo);
-  } catch {}
-  const ligacao = interpretarPosLigacao(body);
-  if (ligacao) processarLigacao(ligacao).catch((err) => console.error("Erro ao processar fim de ligação:", err));
-  return new Response("OK", { status: 200 });
+  return channelApi(req, "elevenlabs", async () => {
+    const raw = await limitedText(req, 1048576);
+    if (!assinaturaConfere(raw, req.headers.get("elevenlabs-signature"), getConfig("ELEVENLABS_WEBHOOK_SECRET") || "")) throw new AuthError("Assinatura inválida.", 401);
+    let body: unknown;
+    try { body = JSON.parse(raw); } catch { throw new AuthError("Aviso JSON inválido."); }
+    const call = interpretarPosLigacao(body);
+    if (call) await processarLigacao(call);
+    return new Response("OK");
+  });
 }

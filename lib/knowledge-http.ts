@@ -69,6 +69,7 @@ export async function knowledgeFetch(
     signal?: AbortSignal;
     infrastructure?: boolean;
     maxBytes?: number;
+    redirects?: boolean;
   } = {},
 ): Promise<Buffer> {
   const deadline = AbortSignal.timeout(120000);
@@ -116,6 +117,7 @@ export async function knowledgeFetch(
       });
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         await response.body?.cancel();
+        if (options.redirects === false) throw new FlowError("O serviço redirecionou o pedido. Confira o endereço.");
         const next = knowledgeUrl(
           new URL(response.headers.get("location") || "", url).href,
         );

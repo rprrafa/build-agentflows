@@ -78,6 +78,6 @@ jornada verifica configurações A/B, preview em iframe, envio pela fila, recarg
 desktop e celular, sem serviços pagos. Capturas ficam em
 `/tmp/agentflows-embed-desktop.png` e `/tmp/agentflows-embed-mobile.png`.
 
-Webhooks de WhatsApp/ElevenLabs e os demais repositórios
-legados ainda têm pendências em `SAAS-PLAN.md`; esta migração não encerra a
-validação da aplicação inteira para abertura do beta.
+Webhooks de WhatsApp/ElevenLabs foram migrados em [CHANNEL-TENANTS.md](CHANNEL-TENANTS.md).
+Os demais repositórios legados ainda têm pendências em `SAAS-PLAN.md`; estas
+migrações não encerram a validação inteira para abertura do beta.

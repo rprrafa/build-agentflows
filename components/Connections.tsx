@@ -336,7 +336,8 @@ export function Connections() {
                       ? c.chave.startsWith("ZAPI_")
                       : provedor === "meta"
                         ? c.chave.startsWith("WHATSAPP_TOKEN") ||
-                          c.chave === "WHATSAPP_PHONE_NUMBER_ID"
+                          c.chave === "WHATSAPP_PHONE_NUMBER_ID" ||
+                          c.chave === "WHATSAPP_APP_SECRET"
                         : c.chave.startsWith("ZAPPERHUB_"),
                   )}
                 <p className="connection-note">

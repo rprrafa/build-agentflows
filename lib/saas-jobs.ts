@@ -4,6 +4,7 @@ import { currentTenant } from "./tenant-context";
 import { FlowError } from "./flow-store";
 import { buildRun } from "./flow-runtime";
 import { persistTenantRun } from "./tenant-flows";
+import { settleChannelDelivery } from "./channel-flows";
 import type { Run } from "./flow-types";
 
 export type Job = { id: string; user_id: string; kind: "run" | "index" | "extract"; resource_id: string; run_id: string | null; base_id: string | null; source_id: string | null; status: string; lease_token: string | null; error: string | null };
@@ -20,6 +21,8 @@ export async function insertJob(sql: Sql, job: Pick<Job, "user_id" | "kind" | "r
   const { rows } = await sql.query<Job>(`INSERT INTO jobs(id,user_id,kind,resource_id,run_id,base_id,source_id)
     VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING RETURNING *`, [id, job.user_id, job.kind, job.resource_id, job.run_id, job.base_id, job.source_id]);
   if (!rows[0]) throw new FlowError("Este recurso já tem uma tarefa na fila.", 409);
+  if (job.kind === "run") await sql.query(`INSERT INTO channel_deliveries(user_id,job_id,run_id)
+    SELECT user_id,$2,run_id FROM channel_events WHERE user_id=$1 AND run_id=$3 AND channel='whatsapp'`, [job.user_id, id, job.run_id]);
   return rows[0];
 }
 export async function enqueueRun(...args: Parameters<typeof buildRun>) {
@@ -93,6 +96,8 @@ export async function finishJob(db: Database, job: Job, error?: string) {
   await db.transaction(async (sql) => {
     await sql.query("UPDATE jobs SET lease_until=NULL,finished_at=now() WHERE id=$1 AND lease_token=$2 AND status='cancelled'", [job.id, job.lease_token]);
     const { rows } = await sql.query<Job>("UPDATE jobs SET status=$3,error=$4,finished_at=now(),lease_until=NULL WHERE id=$1 AND lease_token=$2 AND status='running' AND lease_until>now() RETURNING *", [job.id, job.lease_token, error ? "failed" : "done", error || null]);
+    const owned = await sql.query("SELECT id FROM jobs WHERE id=$1 AND user_id=$2 AND lease_token=$3 AND status IN ('done','failed','cancelled') FOR UPDATE", [job.id, job.user_id, job.lease_token]);
+    if (owned.rows.length) await settleChannelDelivery(sql, job);
     if (error && rows[0]?.run_id) await sql.query(`UPDATE runs SET status='failed',body=(body-'queued') || $3::jsonb
       WHERE user_id=$1 AND id=$2 AND status='running'`, [rows[0].user_id, rows[0].run_id, JSON.stringify({ status: "failed", error, updatedAt: new Date().toISOString() })]);
   });
@@ -100,12 +105,14 @@ export async function finishJob(db: Database, job: Job, error?: string) {
 export async function recoverExpiredJobs(db: Database) {
   return db.transaction(async (sql) => {
     await queueLock(sql);
-    await sql.query("UPDATE jobs SET lease_until=NULL,finished_at=now() WHERE status='cancelled' AND lease_until<now()");
+    const cancelled = await sql.query<Job>("UPDATE jobs SET lease_until=NULL,finished_at=now() WHERE status='cancelled' AND lease_until<now() RETURNING *");
+    for (const job of cancelled.rows) await settleChannelDelivery(sql, job);
     const { rows } = await sql.query<Job>(`SELECT * FROM jobs WHERE status='running' AND lease_until<now() FOR UPDATE SKIP LOCKED`);
     for (const job of rows) {
       const error = "A tarefa foi interrompida. Revise os efeitos já realizados antes de iniciar outra execução.";
       // No blind replay: an external side effect may have succeeded before the process died.
       await sql.query("UPDATE jobs SET status='interrupted',error=$2,finished_at=now(),lease_until=NULL WHERE id=$1", [job.id, error]);
+      await settleChannelDelivery(sql, job);
       if (job.run_id) await sql.query(`UPDATE runs SET status='failed',body=body || $3::jsonb
         WHERE user_id=$1 AND id=$2 AND status='running'`, [job.user_id, job.run_id, JSON.stringify({ status: "failed", interrupted: true, error, updatedAt: new Date().toISOString() })]);
       if (job.run_id) await sql.query("UPDATE embed_commands SET status='cancelled',body=body || '{\"status\":\"cancelled\"}'::jsonb WHERE user_id=$1 AND run_id=$2 AND status IN ('pending','delivered')", [job.user_id, job.run_id]);

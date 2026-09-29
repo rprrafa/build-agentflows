@@ -1,3 +1,4 @@
+import { settleChannelDelivery } from "./channel-flows";
 import { randomUUID } from "node:crypto";
 import { currentTenant } from "./tenant-context";
 import { currentFlow, FlowError, normalizeFlowUpdate, validateGraph } from "./flow-store";
@@ -124,6 +125,8 @@ export async function cancelTenantRun(id: string) {
     if (run.embedSessionId) await sql.query("UPDATE embed_commands SET status='cancelled',body=body || '{\"status\":\"cancelled\"}'::jsonb WHERE user_id=$1 AND run_id=$2 AND status IN ('pending','delivered')", [user.id, id]);
     // Keep a running worker's slot until it stops; queued jobs release immediately.
     await sql.query("UPDATE jobs SET status='cancelled',finished_at=CASE WHEN status='queued' THEN now() ELSE NULL END WHERE user_id=$1 AND run_id=$2 AND status IN ('queued','running')", [user.id, id]);
+    const cancelled = await sql.query<{ id: string; user_id: string; run_id: string }>("SELECT id,user_id,run_id FROM jobs WHERE user_id=$1 AND run_id=$2 AND status='cancelled' AND lease_until IS NULL", [user.id, id]);
+    for (const job of cancelled.rows) await settleChannelDelivery(sql, job);
     return run;
   });
 }

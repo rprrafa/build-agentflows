@@ -1,24 +1,25 @@
-// Avisos do WhatsApp (Z-API, Meta e ZapperHub) chegam aqui. Rota pública (proxy.ts, `/webhook/**`),
-// protegida pela chave secreta na URL (?chave=) gerada em Configurações; a Meta também usa essa chave
-// como valor de verificação. Cada mensagem de texto executa o fluxo publicado escolhido em
-// Conexões e a resposta volta pelo mesmo número. Responde 200 na hora e processa em seguida.
-import { chaveConfere, interpretarRecebido } from "@/lib/whatsapp";
+import { interpretarRecebidos, assinaturaMetaConfere } from "@/lib/whatsapp";
 import { processarWhatsApp } from "@/lib/channel-flows";
+import { channelApi } from "@/lib/channel-auth";
+import { limitedText } from "@/lib/saas-http";
+import { AuthError } from "@/lib/saas-security";
+import { getConfig } from "@/lib/store";
+import { provedorWhatsApp } from "@/lib/conexoes";
 export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
-  const q = new URL(req.url).searchParams;
-  if (q.get("hub.mode") === "subscribe" && chaveConfere(q.get("hub.verify_token")))
-    return new Response(q.get("hub.challenge") || "", { status: 200, headers: { "Content-Type": "text/plain" } });
-  return new Response(null, { status: 403 });
+  return channelApi(req, "whatsapp", async () => {
+    const q = new URL(req.url).searchParams;
+    if (q.get("hub.mode") !== "subscribe") throw new AuthError("Verificação inválida.", 403);
+    return new Response((q.get("hub.challenge") || "").slice(0, 512), { headers: { "Content-Type": "text/plain" } });
+  });
 }
 export async function POST(req: Request) {
-  const q = new URL(req.url).searchParams;
-  if (!chaveConfere(q.get("chave"))) {
-    console.error("Aviso do WhatsApp recusado: chave ausente ou diferente.");
-    return new Response(null, { status: 401 });
-  }
-  const body = await req.json().catch(() => null);
-  const recebida = interpretarRecebido(body);
-  if (recebida) processarWhatsApp(recebida).catch((err) => console.error("Erro ao responder no WhatsApp:", err));
-  return new Response("OK", { status: 200 });
+  return channelApi(req, "whatsapp", async () => {
+    const raw = await limitedText(req, 300000);
+    if (provedorWhatsApp() === "meta" && !assinaturaMetaConfere(raw, req.headers.get("x-hub-signature-256"), getConfig("WHATSAPP_APP_SECRET") || "")) throw new AuthError("Assinatura inválida.", 401);
+    let body: unknown;
+    try { body = JSON.parse(raw); } catch { throw new AuthError("Aviso JSON inválido."); }
+    for (const message of interpretarRecebidos(body)) await processarWhatsApp(message);
+    return new Response("OK");
+  });
 }

@@ -81,6 +81,6 @@ Build aprovado e lint sem erros; permanece o aviso anterior do avatar do chat.
 Docker passou com o cliente MCP oficial pela rede, contas separadas e resultado
 preservado após recriar containers. A jornada de navegador também passou.
 
-Os webhooks de WhatsApp e ElevenLabs ainda precisam migrar a identidade pública,
-a deduplicação dos eventos e a entrega das respostas pelo worker. A remoção dos
-demais repositórios legados também continua pendente em [SAAS-PLAN.md](SAAS-PLAN.md).
+Os webhooks de WhatsApp e ElevenLabs também usam identidade por usuário,
+deduplicação e fila; detalhes em [CHANNEL-TENANTS.md](CHANNEL-TENANTS.md). A remoção
+dos demais repositórios legados continua pendente em [SAAS-PLAN.md](SAAS-PLAN.md).

@@ -106,6 +106,12 @@ privados e a mesma fila dos fluxos. Veja [EMBED-TENANTS.md](EMBED-TENANTS.md).
 MCP e o webhook de fluxos também usam chave privada da conta e a fila compartilhada;
 o POST HTTP retorna 202 e o resultado é consultado pelo identificador da execução.
 Veja [INTEGRATION-TENANTS.md](INTEGRATION-TENANTS.md).
+
+WhatsApp e ElevenLabs também usam chaves por usuário, eventos deduplicados e
+a fila compartilhada. Recadastre as URLs exibidas em Configurações/Implantar;
+a Meta exige o segredo do aplicativo para validar os avisos. Respostas pelo
+WhatsApp são enviadas pelo worker e têm recibo no histórico, sem repetição
+automática de envios incertos. Veja [CHANNEL-TENANTS.md](CHANNEL-TENANTS.md).
 Os webhooks de WhatsApp e ElevenLabs ainda estão em migração. Não habilite esses
 canais em produção até concluir as pendências de
 [SAAS-PLAN.md](SAAS-PLAN.md). Os módulos herdados de formulários públicos,

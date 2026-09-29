@@ -1,3 +1,6 @@
+import { getTenantFlow } from "@/lib/tenant-flows";
+import { currentTenant } from "@/lib/tenant-context";
+import { FlowError } from "@/lib/flow-store";
 import { salvarCampos, statusConexoes } from "@/lib/conexoes";
 import { appOrigin } from "@/lib/saas-security";
 import { requestApi, body } from "@/lib/flow-api";
@@ -9,6 +12,16 @@ export async function PUT(req: Request) {
   return requestApi(req, async () => {
     const b = await body(req);
     const campos = b.campos as Record<string, unknown> | undefined;
+    for (const key of ["WHATSAPP_FLOW_ID", "ELEVENLABS_FLOW_ID"]) {
+      const id = campos?.[key];
+      if (typeof id === "string" && id) {
+        await getTenantFlow(id);
+        const { user, config } = currentTenant();
+        config.guards.push(async sql => {
+          if (!(await sql.query("SELECT id FROM flows WHERE user_id=$1 AND id=$2", [user.id, id])).rows.length) throw new FlowError("Fluxo não encontrado.", 404);
+        });
+      }
+    }
     salvarCampos(campos, b.aceiteWhatsApp);
     // Ao salvar o WhatsApp, o endereço de avisos é cadastrado no provedor (Z-API e ZapperHub).
     let aviso: string | null = null;

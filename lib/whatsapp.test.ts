@@ -1,24 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-const dir = mkdtempSync(join(tmpdir(), "agentflows-whatsapp-"));
-process.env.DATA_DIR = dir;
-const { setConfig } = await import("./store");
-const { salvarCampos, chaveWebhook } = await import("./conexoes");
+import { createTenantTestContext } from "../scripts/tenant-test-context";
+const context = await createTenantTestContext();
+const { salvarCampos } = await import("./conexoes");
 const wa = await import("./whatsapp");
-const store = await import("./flow-store");
-const { block } = await import("./flow-types");
-const { processarWhatsApp } = await import("./channel-flows");
-const webhook = await import("../app/webhook/whatsapp/route");
-const { chatGPT } = await import("./chatgpt");
-chatGPT().account = async () => ({
-  account: { type: "chatgpt", email: "t@example.com", planType: "plus" },
-  login: null,
-  error: null,
-});
-test.after(() => rmSync(dir, { recursive: true, force: true }));
+const tenantTest = (name: string, action: () => Promise<void>) => test(name, () => context.asTenant(action));
+test.after(context.close);
 function mockFetch(handler: (url: string, init?: RequestInit) => unknown) {
   const original = globalThis.fetch;
   const calls: { url: string; init?: RequestInit }[] = [];
@@ -31,26 +18,26 @@ function mockFetch(handler: (url: string, init?: RequestInit) => unknown) {
 }
 test("interpreta avisos dos três provedores e ignora grupos e mensagens próprias", () => {
   assert.deepEqual(
-    wa.interpretarRecebido({ type: "ReceivedCallback", phone: "5511999990000", senderName: "Ana", text: { message: "Oi" } }),
-    { de: "5511999990000", texto: "Oi", nome: "Ana", provedor: "zapi" },
+    wa.interpretarRecebidos({ type: "ReceivedCallback", messageId: "z1", instanceId: "inst", phone: "5511999990000", senderName: "Ana", text: { message: "Oi" } }),
+    [{ id: "z1", conta: "inst", de: "5511999990000", texto: "Oi", nome: "Ana", provedor: "zapi" }],
   );
-  assert.equal(wa.interpretarRecebido({ type: "ReceivedCallback", phone: "55", fromMe: true, text: { message: "x" } }), null);
-  assert.equal(wa.interpretarRecebido({ type: "ConnectedCallback", phone: "55" }), null);
+  assert.deepEqual(wa.interpretarRecebidos({ type: "ReceivedCallback", phone: "55", fromMe: true, text: { message: "x" } }), []);
+  assert.deepEqual(wa.interpretarRecebidos({ type: "ConnectedCallback", phone: "55" }), []);
   assert.deepEqual(
-    wa.interpretarRecebido({
-      entry: [{ changes: [{ value: { contacts: [{ profile: { name: "Bia" } }], messages: [{ from: "5521988887777", type: "text", text: { body: "Olá" } }] } }] }],
+    wa.interpretarRecebidos({
+      entry: [{ changes: [{ value: { metadata: { phone_number_id: "meta1" }, contacts: [{ profile: { name: "Bia" } }], messages: [{ id: "m1", from: "5521988887777", type: "text", text: { body: "Olá" } }] } }] }],
     }),
-    { de: "5521988887777", texto: "Olá", nome: "Bia", provedor: "meta" },
+    [{ id: "m1", conta: "meta1", de: "5521988887777", texto: "Olá", provedor: "meta" }],
   );
-  assert.equal(wa.interpretarRecebido({ entry: [{ changes: [{ value: { messages: [{ from: "55", type: "image" }] } }] }] }), null);
+  assert.deepEqual(wa.interpretarRecebidos({ entry: [{ changes: [{ value: { messages: [{ from: "55", type: "image" }] } }] }] }), []);
   assert.deepEqual(
-    wa.interpretarRecebido({ event: { Info: { Sender: "5531977776666@s.whatsapp.net", PushName: "Caio" }, Message: { ExtendedTextMessage: { Text: "Bom dia" } } } }),
-    { de: "5531977776666", texto: "Bom dia", nome: "Caio", provedor: "zapperhub" },
+    wa.interpretarRecebidos({ event: { Info: { ID: "w1", Sender: "5531977776666@s.whatsapp.net", PushName: "Caio" }, Message: { ExtendedTextMessage: { Text: "Bom dia" } } } }),
+    [{ id: "w1", de: "5531977776666", texto: "Bom dia", nome: "Caio", provedor: "zapperhub" }],
   );
-  assert.equal(wa.interpretarRecebido({ event: { Info: { Sender: "1@g.us", IsGroup: true }, Message: { Conversation: "x" } } }), null);
-  assert.equal(wa.interpretarRecebido("nada"), null);
+  assert.deepEqual(wa.interpretarRecebidos({ event: { Info: { Sender: "1@g.us", IsGroup: true }, Message: { Conversation: "x" } } }), []);
+  assert.deepEqual(wa.interpretarRecebidos("nada"), []);
 });
-test("envia pelo provedor escolhido com as credenciais salvas", async () => {
+tenantTest("envia pelo provedor escolhido com as credenciais salvas", async () => {
   salvarCampos({ WHATSAPP_PROVEDOR: "zapi", ZAPI_INSTANCE_ID: "inst", ZAPI_TOKEN: "tok", ZAPI_CLIENT_TOKEN: "cli" }, { provedor: "zapi", versao: "2026-09-20" });
   let m = mockFetch(() => ({ messageId: "1" }));
   try {
@@ -90,36 +77,4 @@ test("envia pelo provedor escolhido com as credenciais salvas", async () => {
   } finally {
     m.restore();
   }
-});
-test("aviso recebido executa o fluxo publicado e responde pelo mesmo número", async () => {
-  const f = store.createFlow("Atendimento");
-  const g = { nodes: [block("start", "inicio", 0, 0), block("end", "fim", 0, 0)], edges: [{ id: "1", source: "inicio", target: "fim" }] };
-  g.nodes[1].data.config.text = "Recebemos: {{input}}";
-  store.saveFlow(f.id, { name: f.name, description: "", graph: g });
-  store.publishFlow(f.id);
-  salvarCampos({ WHATSAPP_PROVEDOR: "zapi", ZAPI_INSTANCE_ID: "inst", ZAPI_TOKEN: "tok", ZAPI_CLIENT_TOKEN: "cli" }, { provedor: "zapi", versao: "2026-09-20" });
-  setConfig("WHATSAPP_FLOW_ID", f.id);
-  const m = mockFetch(() => ({ messageId: "1" }));
-  try {
-    const chave = chaveWebhook();
-    const recusado = await webhook.POST(new Request("http://x/webhook/whatsapp?chave=errada", { method: "POST", body: "{}" }));
-    assert.equal(recusado.status, 401);
-    const verificacao = await webhook.GET(new Request(`http://x/webhook/whatsapp?hub.mode=subscribe&hub.verify_token=${chave}&hub.challenge=abc`));
-    assert.equal(await verificacao.text(), "abc");
-    const resposta = await processarWhatsApp({ de: "5511999990000", texto: "Quero um orçamento", provedor: "zapi" });
-    assert.equal(resposta, "Recebemos: Quero um orçamento");
-    assert.deepEqual(JSON.parse(String(m.calls[0].init?.body)), { phone: "5511999990000", message: "Recebemos: Quero um orçamento" });
-    const ok = await webhook.POST(new Request(`http://x/webhook/whatsapp?chave=${chave}`, { method: "POST", body: JSON.stringify({ type: "ReceivedCallback", phone: "55", fromMe: true }) }));
-    assert.equal(ok.status, 200);
-  } finally {
-    m.restore();
-    setConfig("WHATSAPP_FLOW_ID", null);
-  }
-});
-
-test("conexão não oficial antiga não envia nem processa sem aceite", async () => {
-  setConfig("WHATSAPP_PROVEDOR", "zapi");
-  setConfig("WHATSAPP_ACEITE", null);
-  await assert.rejects(() => wa.enviarMensagem("5511999990000", "Oi"), /Conecte o WhatsApp/);
-  assert.equal(await processarWhatsApp({ de: "5511999990000", texto: "Oi", nome: "Ana", provedor: "zapi" }), null);
 });

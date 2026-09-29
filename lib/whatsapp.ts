@@ -7,13 +7,15 @@
 //   ZapperHub (zapperapi.com, compatível com wuzapi): cabeçalho X-Api-Key; POST /chat/send/text
 //     {Phone, Body}; aviso { event: { Info: { Sender, IsFromMe, IsGroup }, Message: {...} } }.
 // Os avisos chegam em /webhook/whatsapp?chave=<segredo>, com a chave gerada em lib/conexoes.ts.
-import { timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { getConfig, setConfig } from "./store";
 import { chaveWebhook, provedorWhatsApp, whatsappConfigurado } from "./conexoes";
 import { FlowError } from "./flow-store";
+import { jobSignal } from "./saas-job-context";
+import { knowledgeFetch, KnowledgeServiceError } from "./knowledge-http";
 import type { Resultado } from "./conexoes-teste";
-export type Recebida = { de: string; texto: string; nome?: string; provedor: "zapi" | "meta" | "zapperhub" };
-const ZAPI_BASE = process.env.ZAPI_BASE_URL || "https://api.z-api.io";
+export type Recebida = { id: string; conta?: string; de: string; texto: string; nome?: string; provedor: "zapi" | "meta" | "zapperhub" };
+const ZAPI_BASE = "https://api.z-api.io";
 export function soDigitos(numero: string) {
   return numero.replace(/\D/g, "");
 }
@@ -29,20 +31,38 @@ function falha(status: number, detalhe: string): FlowError {
   return new FlowError("O WhatsApp não aceitou a mensagem agora. Tente de novo em instantes.", 502);
 }
 async function chamar(url: string, init: RequestInit): Promise<Record<string, unknown>> {
-  let r: Response;
+  const signal = jobSignal(20000);
+  let texto: string;
   try {
-    r = await fetch(url, { ...init, signal: AbortSignal.timeout(20000) });
-  } catch {
+    // Custom provider hosts use pinned DNS and reject private addresses and redirects.
+    if (new URL(url).origin !== "https://api.zapperapi.com" && !url.startsWith(ZAPI_BASE + "/") && !url.startsWith("https://graph.facebook.com/")) {
+      if (new URL(url).protocol !== "https:") throw new FlowError("Use HTTPS para conectar o WhatsApp.");
+      texto = (await knowledgeFetch(url, { method: init.method, headers: init.headers as Record<string, string>, body: init.body ? JSON.parse(String(init.body)) : undefined, signal, maxBytes: 65536, redirects: false })).toString("utf8");
+    } else {
+      const r = await fetch(url, { ...init, signal, redirect: "error" });
+      const parts: Uint8Array[] = []; let size = 0;
+      const reader = r.body?.getReader();
+      if (reader) try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.byteLength;
+          if (size > 65536) { await reader.cancel(); throw new FlowError("O provedor devolveu uma resposta muito grande.", 502); }
+          parts.push(value);
+        }
+      } finally { reader.releaseLock(); }
+      texto = Buffer.concat(parts).toString("utf8");
+      if (!r.ok) throw falha(r.status, texto);
+    }
+  } catch (error) {
+    if (error instanceof KnowledgeServiceError) throw falha(error.upstreamStatus, "");
+    if (error instanceof FlowError) throw error;
     throw new FlowError("Não foi possível falar com o provedor de WhatsApp agora.", 503);
   }
-  const texto = await r.text().catch(() => "");
-  if (!r.ok) throw falha(r.status, texto);
-  try {
-    return texto ? (JSON.parse(texto) as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
+  try { return texto ? JSON.parse(texto) as Record<string, unknown> : {}; }
+  catch { throw new FlowError("O provedor devolveu uma resposta inválida.", 502); }
 }
+
 function zapi(caminho: string) {
   const id = getConfig("ZAPI_INSTANCE_ID"),
     token = getConfig("ZAPI_TOKEN"),
@@ -111,49 +131,40 @@ export async function configurarAvisos(urlBase: string): Promise<string | null> 
   }
   return null;
 }
-export function chaveConfere(recebida: string | null): boolean {
-  const esperada = getConfig("WHATSAPP_WEBHOOK_CHAVE");
-  if (!recebida || !esperada) return false;
-  const a = Buffer.from(recebida),
-    b = Buffer.from(esperada);
-  return a.length === b.length && timingSafeEqual(a, b);
+export function assinaturaMetaConfere(raw: string, signature: string | null, secret: string) {
+  if (!secret || !signature || !/^sha256=[a-f0-9]{64}$/.test(signature)) return false;
+  return timingSafeEqual(createHmac("sha256", secret).update(raw).digest(), Buffer.from(signature.slice(7), "hex"));
 }
-// Extrai a mensagem de texto de um aviso, seja qual for o provedor. Ignora grupos e mensagens
-// enviadas pelo próprio número (evita responder a si mesmo).
-export function interpretarRecebido(body: unknown): Recebida | null {
-  if (!body || typeof body !== "object") return null;
-  const b = body as Record<string, unknown>;
-  // Z-API
+const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+const string = (value: unknown) => typeof value === "string" ? value : "";
+const array = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
+// Return every text in a Meta batch. Status, group and outgoing events do not create jobs.
+export function interpretarRecebidos(body: unknown): Recebida[] {
+  const b = object(body), result: Recebida[] = [];
+  const add = (m: Recebida) => {
+    if (!m.texto || !m.de) return;
+    if (!m.id || m.id.length > 256 || !/^\d{10,15}$/.test(m.de)) throw new FlowError("Mensagem sem identificador ou remetente válido.");
+    if (m.texto.length > 20000) throw new FlowError("Mensagem muito grande.", 413);
+    result.push(m);
+    if (result.length > 100) throw new FlowError("Lote de mensagens muito grande.", 413);
+  };
   if (b.type === "ReceivedCallback") {
-    if (b.fromMe || b.isGroup || b.isNewsletter) return null;
-    const texto = (b.text as { message?: string } | undefined)?.message;
-    const de = typeof b.phone === "string" ? soDigitos(b.phone) : "";
-    return de && texto ? { de, texto: String(texto), nome: typeof b.senderName === "string" ? b.senderName : undefined, provedor: "zapi" } : null;
+    if (!b.fromMe && !b.isGroup && !b.isNewsletter)
+      add({ id: string(b.messageId), conta: string(b.instanceId), de: soDigitos(string(b.phone)), texto: string(object(b.text).message), nome: string(b.senderName) || undefined, provedor: "zapi" });
+  } else if (Array.isArray(b.entry)) {
+    for (const entry of b.entry) for (const change of array(object(entry).changes)) {
+      const value = object(object(change).value);
+      for (const item of array(value.messages)) {
+        const m = object(item);
+        if (m.type === "text") add({ id: string(m.id), conta: string(object(value.metadata).phone_number_id), de: soDigitos(string(m.from)), texto: string(object(m.text).body), provedor: "meta" });
+      }
+    }
+  } else {
+    const ev = object(b.event ?? b), info = object(ev.Info), msg = object(ev.Message);
+    if (!info.IsFromMe && !info.IsGroup)
+      add({ id: string(info.ID), de: soDigitos(string(info.Sender).split("@")[0]), texto: string(msg.Conversation) || string(msg.conversation) || string(object(msg.ExtendedTextMessage).Text) || string(object(msg.extendedTextMessage).text), nome: string(info.PushName) || undefined, provedor: "zapperhub" });
   }
-  // Meta
-  if (Array.isArray(b.entry)) {
-    for (const entrada of b.entry as { changes?: { value?: { messages?: { from?: string; type?: string; text?: { body?: string } }[]; contacts?: { profile?: { name?: string } }[] } }[] }[])
-      for (const mudanca of entrada.changes || [])
-        for (const m of mudanca.value?.messages || [])
-          if (m.type === "text" && m.from && m.text?.body)
-            return { de: soDigitos(m.from), texto: m.text.body, nome: mudanca.value?.contacts?.[0]?.profile?.name, provedor: "meta" };
-    return null;
-  }
-  // ZapperHub / wuzapi
-  const ev = (b.event ?? b) as Record<string, unknown>;
-  const info = ev.Info as { Sender?: string; IsFromMe?: boolean; IsGroup?: boolean; PushName?: string } | undefined;
-  const msg = ev.Message as Record<string, unknown> | undefined;
-  if (info?.Sender && msg) {
-    if (info.IsFromMe || info.IsGroup) return null;
-    const texto =
-      (typeof msg.Conversation === "string" && msg.Conversation) ||
-      (msg.ExtendedTextMessage as { Text?: string } | undefined)?.Text ||
-      (typeof msg.conversation === "string" && msg.conversation) ||
-      "";
-    const de = soDigitos(info.Sender.split("@")[0]);
-    return de && texto ? { de, texto, nome: info.PushName, provedor: "zapperhub" } : null;
-  }
-  return null;
+  return result;
 }
 export async function testarWhatsApp(): Promise<Resultado> {
   const p = provedorWhatsApp();

@@ -217,6 +217,54 @@ try {
     await writeFile('/app/data/docker-test.json', JSON.stringify(fixture), { mode: 0o600 });
     await db.close();
   `);
+  console.log("Docker: checking tenant channel webhooks and durable deduplication...");
+  await compose("stop", "worker");
+  await inside(common + `
+    import { createHmac } from 'node:crypto';
+    import { withTenantJob } from './lib/tenant-context.ts';
+    import { salvarCampos } from './lib/conexoes.ts';
+    import { channelKey } from './lib/channel-auth.ts';
+    import { setConfig } from './lib/store.ts';
+    const fixture = JSON.parse(await readFile('/app/data/docker-test.json', 'utf8'));
+    const keys = await withTenantJob(db, fixture.a, () => {
+      salvarCampos({ WHATSAPP_PROVEDOR: 'zapi', ZAPI_INSTANCE_ID: 'fixture-instance', ZAPI_TOKEN: 'fixture-token', ZAPI_CLIENT_TOKEN: 'fixture-client', WHATSAPP_FLOW_ID: fixture.flowId, ELEVENLABS_FLOW_ID: fixture.flowId, ELEVENLABS_AGENT_ID: 'fixture-agent', ELEVENLABS_WEBHOOK_SECRET: 'fixture-hmac' }, { provedor: 'zapi', versao: '2026-09-20' });
+      return { whatsapp: channelKey('whatsapp'), elevenlabs: channelKey('elevenlabs') };
+    });
+    const waBody = JSON.stringify({ type: 'ReceivedCallback', instanceId: 'fixture-instance', messageId: 'docker-message', phone: '5511999990000', text: { message: 'Docker WhatsApp' } });
+    const callBody = JSON.stringify({ type: 'post_call_transcription', data: { agent_id: 'fixture-agent', conversation_id: 'docker-call', transcript: [{ role: 'user', message: 'Docker ElevenLabs' }] } });
+    const seconds = Math.floor(Date.now() / 1000);
+    const signature = 't=' + seconds + ',v0=' + createHmac('sha256', 'fixture-hmac').update(seconds + '.' + callBody).digest('hex');
+    const send = (channel, key, body, headers = {}) => fetch('http://127.0.0.1:10000/webhook/' + channel + '?chave=' + key, { method: 'POST', body, headers: { 'content-type': 'application/json', ...headers } });
+    assert.equal((await send('whatsapp', keys.whatsapp.replace(fixture.a, fixture.b), waBody)).status, 401);
+    assert.equal((await send('elevenlabs', keys.elevenlabs, callBody)).status, 401);
+    for (let i=0; i<2; i++) {
+      assert.equal((await send('whatsapp', keys.whatsapp, waBody)).status, 200);
+      assert.equal((await send('elevenlabs', keys.elevenlabs, callBody, { 'elevenlabs-signature': signature })).status, 200);
+    }
+    const events = (await db.query('SELECT * FROM channel_events WHERE user_id=$1', [fixture.a])).rows;
+    assert.equal(events.length, 2);
+    assert.ok(!JSON.stringify(events).includes('5511999990000'));
+    for (const event of events) assert.equal((await request(fixture.tokenB, '/api/runs/' + event.run_id)).status, 404);
+    // Rotate before restarting either worker. No outbound provider request is permitted in this fixture.
+    await withTenantJob(db, fixture.a, () => setConfig('ZAPI_TOKEN', 'rotated-fixture-token'));
+    fixture.channels = { keys, waBody, callBody, events };
+    await writeFile('/app/data/docker-test.json', JSON.stringify(fixture), { mode: 0o600 });
+    await db.close();
+  `);
+  await compose("up", "-d", "--no-build", "--scale", "worker=2", "--wait", "--wait-timeout", "180", "worker");
+  await inside(common + `
+    const fixture = JSON.parse(await readFile('/app/data/docker-test.json', 'utf8'));
+    let completed = false;
+    for (let i=0; i<40; i++) {
+      const jobs = (await db.query("SELECT status FROM jobs WHERE user_id=$1 AND run_id=ANY($2::text[])", [fixture.a, fixture.channels.events.map(e => e.run_id)])).rows;
+      if (jobs.length === 2 && jobs.every(j => j.status === 'done')) { completed = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    assert.ok(completed);
+    assert.deepEqual((await db.query('SELECT status FROM channel_deliveries WHERE user_id=$1', [fixture.a])).rows.map(d => d.status), ['cancelled']);
+    for (const event of fixture.channels.events) assert.equal((await request(fixture.tokenA, '/api/runs/' + event.run_id)).body.output, 'Worker completed');
+    await db.close();
+  `);
   if (browserPort) {
     const fixture = JSON.parse(await inside("import { readFile } from 'node:fs/promises'; process.stdout.write(await readFile('/app/data/docker-test.json', 'utf8'));"));
     const { verifyEmbedBrowser } = await import("./test-embed-browser.mjs");
@@ -232,6 +280,10 @@ try {
     const fixture = JSON.parse(await readFile('/app/data/docker-test.json', 'utf8'));
     assert.equal((await withTenantJob(db, fixture.chatOwner, readChatSession)).state.account.email, 'test@example.com');
     assert.equal((await withTenantJob(db, fixture.b, readChatSession)).state.auth, null);
+    const repeated = await fetch('http://127.0.0.1:10000/webhook/whatsapp?chave=' + fixture.channels.keys.whatsapp, { method: 'POST', headers: { 'content-type': 'application/json' }, body: fixture.channels.waBody });
+    assert.equal(repeated.status, 200);
+    assert.equal((await db.query('SELECT * FROM channel_events WHERE user_id=$1', [fixture.a])).rows.length, 2);
+    assert.equal((await db.query('SELECT status FROM channel_deliveries WHERE user_id=$1', [fixture.a])).rows[0].status, 'cancelled');
     assert.equal(unseal(fixture.encrypted, 'docker-test'), 'persisted-secret');
     assert.equal((await request(fixture.tokenA, '/api/flows/' + fixture.flowId)).status, 200);
     assert.equal((await request(fixture.tokenB, '/api/flows/' + fixture.flowId)).status, 404);
@@ -253,7 +305,7 @@ try {
   const status = (await compose("ps", "--format", "json")).trim().split("\n").map((line) => JSON.parse(line));
   assert.equal(status.length, 4);
   assert.ok(status.every((service) => service.Health === "healthy"));
-  console.log("Docker passed: authenticated API, private media credentials/images, isolation, queue capacity, two workers, restart and volumes.");
+  console.log("Docker passed: authenticated API, private media credentials/images, tenant channels, deduplication, isolation, queue capacity, two workers, restart and volumes.");
 } finally {
   try { await compose("down", "--volumes", "--remove-orphans"); }
   finally { await rm(dir, { recursive: true, force: true }); }

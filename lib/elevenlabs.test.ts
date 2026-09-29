@@ -1,24 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-const dir = mkdtempSync(join(tmpdir(), "agentflows-elevenlabs-"));
-process.env.DATA_DIR = dir;
+import { createTenantTestContext } from "../scripts/tenant-test-context";
+const context = await createTenantTestContext();
 const { setConfig } = await import("./store");
 const el = await import("./elevenlabs");
-const store = await import("./flow-store");
-const { block } = await import("./flow-types");
-const { processarLigacao } = await import("./channel-flows");
-const webhook = await import("../app/webhook/elevenlabs/route");
-const { chatGPT } = await import("./chatgpt");
-chatGPT().account = async () => ({
-  account: { type: "chatgpt", email: "t@example.com", planType: "plus" },
-  login: null,
-  error: null,
-});
-test.after(() => rmSync(dir, { recursive: true, force: true }));
+const tenantTest = (name: string, action: () => Promise<void>) => test(name, () => context.asTenant(action));
+test.after(context.close);
 function mockFetch(handler: (url: string, init?: RequestInit) => unknown) {
   const original = globalThis.fetch;
   const calls: { url: string; init?: RequestInit }[] = [];
@@ -29,7 +17,7 @@ function mockFetch(handler: (url: string, init?: RequestInit) => unknown) {
   }) as typeof fetch;
   return { calls, restore: () => (globalThis.fetch = original) };
 }
-test("fala, transcrição e ligação usam a chave e os identificadores de Conexões", async () => {
+tenantTest("fala, transcrição e ligação usam a chave e os identificadores de Conexões", async () => {
   setConfig("ELEVENLABS_API_KEY", "sk_teste");
   setConfig("ELEVENLABS_VOICE_ID", "voz1");
   setConfig("ELEVENLABS_AGENT_ID", "ag1");
@@ -88,28 +76,7 @@ test("assinatura do aviso pós-ligação e leitura da transcrição", () => {
   assert.equal(lida.resumo, "Cliente aceitou a reunião.");
   assert.equal(el.interpretarPosLigacao({ type: "outro" }), null);
 });
-test("fim de ligação executa o fluxo escolhido com a transcrição", async () => {
-  const f = store.createFlow("Pós-ligação");
-  const g = { nodes: [block("start", "inicio", 0, 0), block("end", "fim", 0, 0)], edges: [{ id: "1", source: "inicio", target: "fim" }] };
-  g.nodes[1].data.config.text = "Registrado: {{input}}";
-  store.saveFlow(f.id, { name: f.name, description: "", graph: g });
-  store.publishFlow(f.id);
-  setConfig("ELEVENLABS_FLOW_ID", f.id);
-  setConfig("ELEVENLABS_WEBHOOK_SECRET", "segredo");
-  const r = await processarLigacao({ conversationId: "c1", transcricao: "Agente: Olá\nPessoa: Oi", resumo: "Curta", telefone: "+55", variaveis: {} });
-  assert.equal(r?.status, "completed");
-  assert.match(r?.output || "", /Registrado: Telefone: \+55\nResumo: Curta\n\nTranscrição:\nAgente: Olá/);
-  const corpo = JSON.stringify({ type: "post_call_transcription", data: { conversation_id: "c2", transcript: [] } });
-  const semAssinatura = await webhook.POST(new Request("http://x/webhook/elevenlabs", { method: "POST", body: corpo }));
-  assert.equal(semAssinatura.status, 401);
-  const t = Math.floor(Date.now() / 1000);
-  const v0 = createHmac("sha256", "segredo").update(`${t}.${corpo}`).digest("hex");
-  const ok = await webhook.POST(new Request("http://x/webhook/elevenlabs", { method: "POST", body: corpo, headers: { "elevenlabs-signature": `t=${t},v0=${v0}` } }));
-  assert.equal(ok.status, 200);
-  setConfig("ELEVENLABS_FLOW_ID", null);
-});
-
-test("transcrição preserva formato do navegador e pedidos de voz aceitam cancelamento", async () => {
+tenantTest("transcrição preserva formato do navegador e pedidos de voz aceitam cancelamento", async () => {
   setConfig("ELEVENLABS_API_KEY", "fixture");
   const controller = new AbortController();
   const m = mockFetch(() => ({ text: "Olá" }));

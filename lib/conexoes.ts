@@ -2,6 +2,7 @@
 // ElevenLabs. O ChatGPT continua sendo a conexão principal e fica em lib/chatgpt.ts.
 // Tudo é guardado no banco cifrado da suíte (lib/store.ts); segredos nunca voltam inteiros.
 import { randomBytes } from "node:crypto";
+import { channelKey } from "./channel-auth";
 import { getConfig, setConfig, mascarar, configTransaction } from "./store";
 import { tenantId } from "./tenant-context";
 import { conexaoAutorizada, desconectar as desautorizar } from "./mcp-oauth";
@@ -31,6 +32,7 @@ export const WHATSAPP_CAMPOS: Campo[] = [
   { chave: "ZAPI_CLIENT_TOKEN", rotulo: "Z-API · Chave de segurança da conta", tipo: "secret", opcional: true },
   { chave: "WHATSAPP_PHONE_NUMBER_ID", rotulo: "Meta · Identificador do número", tipo: "text", opcional: true },
   { chave: "WHATSAPP_TOKEN", rotulo: "Meta · Código de acesso permanente", tipo: "secret", opcional: true },
+  { chave: "WHATSAPP_APP_SECRET", rotulo: "Meta · Segredo do aplicativo", tipo: "secret", opcional: true, ajuda: "Necessário para validar as mensagens recebidas da Meta." },
   { chave: "ZAPPERHUB_URL", rotulo: "ZapperHub · Endereço da API", tipo: "text", opcional: true, placeholder: "https://api.zapperapi.com" },
   { chave: "ZAPPERHUB_KEY", rotulo: "ZapperHub · Chave", tipo: "secret", opcional: true },
 ];
@@ -184,13 +186,7 @@ export function ligacaoConfigurada() {
   return elevenLabsConfigurado() && !!getConfig("ELEVENLABS_AGENT_ID") && !!getConfig("ELEVENLABS_PHONE_NUMBER_ID");
 }
 // Chave secreta na URL dos avisos (Z-API/ZapperHub) e valor de verificação da Meta, gerados uma vez.
-export function chaveWebhook() {
-  const atual = getConfig("WHATSAPP_WEBHOOK_CHAVE");
-  if (atual) return atual;
-  const nova = randomBytes(24).toString("hex");
-  setConfig("WHATSAPP_WEBHOOK_CHAVE", nova);
-  return nova;
-}
+export const chaveWebhook = () => channelKey("whatsapp");
 export async function statusConexoes(origem: string) {
   const servidores = await Promise.all(
     servidoresMCP().map(async (s) => ({
@@ -220,13 +216,13 @@ export async function statusConexoes(origem: string) {
       ligacao: ligacaoConfigurada(),
       fluxo: getConfig("ELEVENLABS_FLOW_ID") || null,
       campos: statusCampos(ELEVENLABS_CAMPOS),
-      aviso: `${origem}/webhook/elevenlabs`,
+      aviso: `${origem}/webhook/elevenlabs?chave=${channelKey("elevenlabs")}`,
     },
     ligacao: {
       configurada: ligacaoConfigurada(),
       fluxo: getConfig("ELEVENLABS_FLOW_ID") || null,
       campos: statusCampos(LIGACAO_CAMPOS),
-      aviso: `${origem}/webhook/elevenlabs`,
+      aviso: `${origem}/webhook/elevenlabs?chave=${channelKey("elevenlabs")}`,
     },
   };
 }

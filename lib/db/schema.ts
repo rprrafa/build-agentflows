@@ -119,9 +119,24 @@ export const jobs = pgTable("jobs", {
   foreignKey({ columns: [t.user_id, t.base_id, t.source_id], foreignColumns: [knowledgeSources.user_id, knowledgeSources.base_id, knowledgeSources.id] }).onDelete("cascade"),
   check("jobs_kind", sql`${t.kind} IN ('run','index','extract')`), check("jobs_status", sql`${t.status} IN ('queued','running','done','failed','cancelled','interrupted')`),
   check("jobs_resource", sql`(${t.kind}='run' AND ${t.run_id} IS NOT NULL AND ${t.base_id} IS NULL AND ${t.source_id} IS NULL) OR (${t.kind}='index' AND ${t.run_id} IS NULL AND ${t.base_id} IS NOT NULL AND ${t.source_id} IS NULL) OR (${t.kind}='extract' AND ${t.run_id} IS NULL AND ${t.base_id} IS NOT NULL AND ${t.source_id} IS NOT NULL)`),
+  uniqueIndex("jobs_run_parent").on(t.user_id, t.id, t.run_id),
   index("jobs_queue").on(t.status, t.created_at), index("jobs_owner").on(t.user_id, t.status),
   uniqueIndex("jobs_active_resource").on(t.user_id, t.kind, t.resource_id).where(sql`${t.status} IN ('queued','running')`)]);
 export const workerHeartbeats = pgTable("worker_heartbeats", { id: uuid("id").primaryKey(), updated_at: time("updated_at").notNull().defaultNow() });
+
+export const channelEvents = pgTable("channel_events", {
+  user_id: uuid("user_id").notNull(), event_key: text("event_key").notNull(), run_id: text("run_id").notNull(),
+  channel: text("channel").notNull(), reply_ciphertext: text("reply_ciphertext"), created_at: time("created_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.user_id, t.event_key] }), uniqueIndex("channel_events_run").on(t.user_id, t.run_id),
+  foreignKey({ columns: [t.user_id, t.run_id], foreignColumns: [runs.user_id, runs.id] }).onDelete("cascade"),
+  check("channel_events_channel", sql`${t.channel} IN ('whatsapp','elevenlabs')`)]);
+export const channelDeliveries = pgTable("channel_deliveries", {
+  user_id: uuid("user_id").notNull(), job_id: uuid("job_id").notNull(), run_id: text("run_id").notNull(),
+  status: text("status").notNull().default("pending"), updated_at: time("updated_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.user_id, t.job_id] }),
+  foreignKey({ columns: [t.user_id, t.job_id, t.run_id], foreignColumns: [jobs.user_id, jobs.id, jobs.run_id] }).onDelete("cascade"),
+  foreignKey({ columns: [t.user_id, t.run_id], foreignColumns: [channelEvents.user_id, channelEvents.run_id] }).onDelete("cascade"),
+  check("channel_deliveries_status", sql`${t.status} IN ('pending','sending','sent','uncertain','cancelled')`)]);
 
 export const embedSettings = pgTable("embed_settings", {
   user_id: uuid("user_id").notNull(), flow_id: text("flow_id").notNull(), body: jsonb("body").notNull(),

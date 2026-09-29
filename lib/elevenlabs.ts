@@ -93,24 +93,24 @@ export async function ligar(telefone: string, contexto: string): Promise<{ ok: b
 }
 // Assinatura do aviso pós-ligação: "ElevenLabs-Signature: t=<segundos>,v0=<hmac-sha256 de "t.corpo">".
 export function assinaturaConfere(corpo: string, cabecalho: string | null, segredo: string, agora = Date.now()): boolean {
-  if (!cabecalho || !segredo) return false;
+  if (!cabecalho || cabecalho.length > 512 || !segredo) return false;
   const partes = Object.fromEntries(cabecalho.split(",").map((p) => p.trim().split("=") as [string, string]));
   const t = Number(partes.t);
-  if (!t || Math.abs(agora / 1000 - t) > 30 * 60) return false;
+  if (!Number.isSafeInteger(t) || t <= 0 || Math.abs(agora / 1000 - t) > 30 * 60) return false;
   const esperado = createHmac("sha256", segredo).update(`${t}.${corpo}`).digest("hex");
   const a = Buffer.from(esperado),
     b = Buffer.from(String(partes.v0 || ""));
   return a.length === b.length && timingSafeEqual(a, b);
 }
-export type PosLigacao = { conversationId: string; transcricao: string; resumo?: string; telefone?: string; variaveis: Record<string, string> };
+export type PosLigacao = { agentId: string; conversationId: string; transcricao: string; resumo?: string; telefone?: string; variaveis: Record<string, string> };
 export function interpretarPosLigacao(body: unknown): PosLigacao | null {
   if (!body || typeof body !== "object") return null;
   const b = body as { type?: string; data?: Record<string, unknown> };
   if (b.type !== "post_call_transcription" || !b.data) return null;
   const d = b.data;
-  const falas = (d.transcript as { role?: string; message?: string }[] | undefined) || [];
+  const falas = (Array.isArray(d.transcript) ? d.transcript : []) as { role?: string; message?: string }[];
   const transcricao = falas
-    .filter((f) => f.message)
+    .filter((f) => f && typeof f.message === "string")
     .map((f) => `${f.role === "agent" ? "Agente" : "Pessoa"}: ${f.message}`)
     .join("\n");
   const analise = d.analysis as { transcript_summary?: string } | undefined;
@@ -120,10 +120,11 @@ export function interpretarPosLigacao(body: unknown): PosLigacao | null {
     Object.entries(init?.dynamic_variables || {}).map(([k, v]) => [k, String(v ?? "")]),
   );
   return {
-    conversationId: String(d.conversation_id || ""),
+    agentId: typeof d.agent_id === "string" ? d.agent_id : "",
+    conversationId: typeof d.conversation_id === "string" ? d.conversation_id : "",
     transcricao,
-    resumo: analise?.transcript_summary,
-    telefone: meta?.phone_call?.external_number || variaveis.telefone,
+    resumo: typeof analise?.transcript_summary === "string" ? analise.transcript_summary : undefined,
+    telefone: typeof meta?.phone_call?.external_number === "string" ? meta.phone_call.external_number : variaveis.telefone,
     variaveis,
   };
 }

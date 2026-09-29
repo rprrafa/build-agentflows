@@ -12,7 +12,7 @@ Um tenant pessoal corresponde a um usuário autenticado. O ID vem da sessão ou
 do job validado; `user_id` participa das chaves e relações dos recursos. Não há
 seleção de tenant por um campo arbitrário enviado pelo cliente.
 
-Drizzle já define as 29 tabelas em `lib/db/schema.ts`, sem prefixo `saas_`, e gera
+Drizzle já define as 31 tabelas em `lib/db/schema.ts`, sem prefixo `saas_`, e gera
 as migrações em `drizzle/`. O pool PostgreSQL e as transações expõem o ORM tipado;
 o repositório de credenciais já usa suas operações. A conversão das demais
 consultas e remoção dos módulos legados está em andamento. SQL parametrizado
@@ -83,8 +83,8 @@ Validação: **288 testes gerais e 84 no PostgreSQL servidor**, incluindo o clie
 MCP oficial e acesso A/B aos handlers. Build passou; lint sem erros, com o mesmo
 aviso preexistente do avatar. Docker passou com cliente MCP oficial pela rede,
 webhook enfileirado, contas A/B, worker e consulta após recriar containers.
-Navegador passou novamente em desktop/celular. WhatsApp/ElevenLabs ainda exigem
-migração dos canais.
+Navegador passou novamente em desktop/celular. WhatsApp/ElevenLabs foram migrados
+na etapa de canais descrita abaixo.
 
 Sessão ChatGPT persistida em `chatgpt_sessions` cifrada por usuário, com trava
 entre app e workers, renovação, revogação e bloqueio de gravações antigas. O
@@ -96,6 +96,17 @@ Validação: **296 testes gerais e 92 no PostgreSQL servidor**, build aprovado e
 lint sem erros (aviso preexistente no avatar). Docker passou com tmpfs, Codex
 instalado sem credenciais reais, login/turno simulado, persistência cifrada após
 recriar containers, dois workers e navegação desktop/celular.
+
+Canais WhatsApp e ElevenLabs migrados: URLs com chave individual cifrada,
+assinaturas Meta/ElevenLabs, seleção do fluxo restrita ao dono e eventos
+persistidos/deduplicados antes de retornar 200. Respostas WhatsApp ocupam a mesma
+vaga do job; aprovação, cancelamento, rotação e recuperação têm recibo no histórico.
+Envios incertos não são repetidos. Migração Drizzle `0003_channel-events.sql` e
+contratos em [CHANNEL-TENANTS.md](CHANNEL-TENANTS.md). Validação desta etapa:
+**305 testes gerais e 104 no PostgreSQL servidor**, build aprovado e lint sem
+erros (aviso preexistente no avatar). Docker passou com dois workers, canais
+persistidos/deduplicados após recriação, contas A/B e navegador desktop/celular.
+A remoção restante do legado e a auditoria geral continuam no inventário abaixo.
 
 ## Histórico e inventário técnico (em revisão após a mudança de direção)
 
@@ -120,7 +131,7 @@ não está pronto para produção**: autenticação e biblioteca de fluxos já u
 PostgreSQL, assim como configurações, credenciais, anexos privados e conhecimento.
 O motor privado, o chat incorporado e a fila/worker já usam os repositórios por
 usuário. MCP público e webhook de fluxos usam Bearer da conta e a fila comum;
-WhatsApp/ElevenLabs ainda estão pendentes. Esses caminhos não podem cair no SQLite global:
+WhatsApp/ElevenLabs também usam chaves da conta, deduplicação e fila. Esses caminhos não podem cair no SQLite global:
 o armazenamento legado falha explicitamente quando há contexto SaaS ou
 `DATABASE_URL`. Não liberar o beta enquanto houver funcionalidades pendentes.
 
@@ -341,7 +352,7 @@ repositórios, incluindo Server Components e workers; o proxy sozinho não basta
 | Impressão e histórico de execuções | Páginas e APIs usam `runs` por usuário. O histórico genérico `resultados` foi removido. |
 | Embed settings/sessions/commands/requests | Migrados com ticket, origem, fluxo e dono vinculados; jobs usam a fila comum. Polling, anexos e aprovações não cruzam contas. |
 | Webhook de fluxos e MCP | Migrados: Bearer cifrado por conta, validação do dono, rate limit persistido e fila compartilhada. |
-| Webhooks WhatsApp/ElevenLabs | Pendentes: endereço/token por usuário, validação antes de ler configurações, eventos deduplicados e entrega pelo worker. |
+| Webhooks WhatsApp/ElevenLabs | Migrados: chave por usuário, HMAC Meta/ElevenLabs, eventos deduplicados no PostgreSQL e resposta pelo worker. Ver CHANNEL-TENANTS.md. |
 | ChatGPT/Codex e caches MCP/modelos | Remover singletons globais de conta/conexão; diretórios e caches por usuário, credencial e serviço. |
 
 Esquema das entidades: manter IDs públicos existentes e mover JSON `body` para
@@ -357,8 +368,8 @@ devem impedir referências cruzadas mesmo quando um caller passar um ID errado.
    propagação de cancelamento já estão implementados. Auditar também
    acesso de conexões configuráveis à rede interna da instalação (HTTP e drivers
    SQL) e capacidade acumulada de vetores antes do beta.
-2. Concluir a auditoria do contexto de execuções, webhooks de WhatsApp/ElevenLabs e
-   todas as Server Components/APIs do inventário acima. Testar usuários A/B com
+2. Concluir a auditoria do contexto de execuções e todas as Server Components/APIs
+   do inventário acima. Canais WhatsApp/ElevenLabs já migrados (CHANNEL-TENANTS.md). Testar usuários A/B com
    tentativas de acesso cruzado por IDs, arquivos e tokens públicos. A sessão
    ChatGPT persistida já está cifrada; detalhes em [CHATGPT-SESSIONS.md](CHATGPT-SESSIONS.md).
 3. Catálogo inicial de Replicate, Higgsfield e MuAPI integrado ao Agente/LLM,

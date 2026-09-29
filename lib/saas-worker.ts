@@ -3,6 +3,7 @@ import { withTenantJob } from "./tenant-context";
 import { assertJobLease, withJobLease } from "./saas-job-context";
 import { finishJob, heartbeatJob, type Job } from "./saas-jobs";
 import { getTenantRun } from "./tenant-flows";
+import { deliverChannelReply } from "./channel-flows";
 import { execute } from "./flow-runtime";
 import { indexKnowledge, processKnowledgeSource } from "./tenant-knowledge-index";
 import { FlowError } from "./flow-store";
@@ -29,6 +30,7 @@ export async function runClaimedJob(db: Database, job: Job, shutdown?: AbortSign
         if (run.status !== "running") return;
         delete run.queued;
         const result = await execute(run, signal);
+        await deliverChannelReply(result);
         if (result.status === "failed") failure = result.error || "A execução falhou.";
       } else if (job.kind === "index") await indexKnowledge(job.base_id!);
       else await processKnowledgeSource(job.base_id!, job.source_id!);

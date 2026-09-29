@@ -47,7 +47,7 @@ test("provedor do WhatsApp e estado das conexões", async () => {
   c.salvarCampos({ ELEVENLABS_API_KEY: "sk_1234567890" });
   const s = await c.statusConexoes("https://app.exemplo.com");
   assert.equal(s.whatsapp.configurado, true);
-  assert.match(s.whatsapp.aviso, /^https:\/\/app\.exemplo\.com\/webhook\/whatsapp\?chave=[a-f0-9]{48}$/);
+  assert.match(s.whatsapp.aviso, /^https:\/\/app\.exemplo\.com\/webhook\/whatsapp\?chave=ch_[a-f0-9-]{36}\.[A-Za-z0-9_-]{43}$/);
   assert.equal(s.elevenlabs.configurado, true);
   assert.equal(s.elevenlabs.ligacao, false);
   assert.equal(s.openrouter.conectado, false);
