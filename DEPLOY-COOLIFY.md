@@ -57,6 +57,11 @@ pendentes/ativas por conta e mil no total. A autorização do worker expira em
 60 segundos, é renovada a cada dez segundos e a tarefa tem prazo de 15 minutos.
 O worker também entrega a outbox Resend e remove registros expirados.
 
+Fluxos, extração e indexação compartilham a mesma cota por usuário. Ao cancelar
+uma tarefa ativa, a vaga fica reservada até o worker confirmar o encerramento
+ou a recuperação detectar a autorização expirada; cancelar não permite furar
+o limite iniciando outra tarefa enquanto a anterior ainda encerra.
+
 Para executar fora do Compose, use os mesmos `DATABASE_URL`, `REDIS_URL`,
 `CHAVE_MESTRA`, `APP_URL` e `DATA_DIR` do web:
 
@@ -66,9 +71,22 @@ npm run worker
 ```
 
 Mantenha inicialmente uma réplica do web e uma do worker no mesmo host. A
-coordenação da fila é compartilhada, mas conexões ChatGPT e arquivos locais
-precisam de validação adicional antes de escalar réplicas. O shutdown tem até
+coordenação da fila foi testada com dois workers, mas conexões ChatGPT e arquivos
+locais precisam de validação adicional antes de escalar réplicas. O shutdown tem até
 60 segundos para interromper chamadas, finalizar registros e fechar conexões.
+
+## Teste isolado com Docker
+
+`npm run test:docker` compila a imagem e cria um projeto Compose temporário com
+credenciais aleatórias e envio de e-mail desativado. Valida API autenticada,
+isolamento entre contas, limite da fila, dois workers, Faiss e persistência após
+recriar os containers. Ao terminar, remove somente seus containers e volumes.
+Não utiliza o `.env` nem os volumes da aplicação. Docker precisa estar em execução;
+se o executável não estiver no PATH, defina `DOCKER_BIN` com seu caminho completo.
+`AGENTFLOWS_TEST_IMAGE` permite testar uma imagem já compilada.
+
+O teste de containers passou no Docker Desktop com Linux ARM64. A validação do
+host Coolify e das integrações externas continua necessária antes da publicação.
 
 ## Persistência e recuperação
 

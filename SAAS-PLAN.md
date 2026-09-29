@@ -39,6 +39,17 @@ A suíte geral passou 261 testes (removido um teste de importação legada, recu
 descartado pela diretriz atual); build passou. Restam os repositórios internos e
 as integrações públicas listadas abaixo.
 
+Fila: uma tarefa por usuário e duas globais, incluindo fluxos, extração e
+indexação. Cancelamento mantém a vaga até confirmação do worker ou recuperação
+da autorização expirada. Testes cobrem concorrência entre usuários, tipos de
+tarefa, cancelamento e crash. Docker agora disponível: imagem Linux ARM64 e
+Compose testados com API autenticada, dois workers e recriação dos containers
+preservando volumes. `npm run test:docker` reproduz o teste em ambiente isolado.
+O Compose local usa os mesmos serviços do Coolify; a validação não acessa
+credenciais nem dados reais e não confirma integrações externas.
+Validação desta etapa: **266 testes gerais e 55 testes no PostgreSQL servidor**;
+lint sem erros (permanece o aviso anterior de `<img>` no chat).
+
 ## Histórico e inventário técnico (em revisão após a mudança de direção)
 
 O objetivo permanece integral: autenticação por senha/Google, Resend, beta fechado,

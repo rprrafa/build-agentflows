@@ -5,7 +5,7 @@ import { createTestDatabase } from "../scripts/saas-test-db";
 import { generateKeyPair, SignJWT } from "jose";
 import { migrateDatabase } from "./db/migrate";
 import { registerUser, loginUser, findSession, requestActionMail, consumeActionToken, redeemInvite, requireBetaAccess, loginGoogleIdentity, revokeSession } from "./saas-auth";
-import { hashToken, randomToken, seal, unseal, verifyPassword } from "./saas-security";
+import { appOrigin, hashToken, randomToken, seal, unseal, verifyPassword } from "./saas-security";
 import { credentialsFor } from "./saas-credentials";
 import { consumeRateLimit } from "./saas-rate-limit";
 import { deliverAuthMail } from "./saas-mail";
@@ -22,6 +22,20 @@ process.env.RESEND_FROM = "Agentflows <test@example.com>";
 process.env.GOOGLE_CLIENT_ID = "test-google-client";
 process.env.GOOGLE_CLIENT_SECRET = "test-google-secret";
 const password = "Senha-Segura-2026!";
+
+test("origem permite Docker em loopback e exige HTTPS em domínios públicos", () => {
+  const previous = process.env.APP_URL;
+  try {
+    for (const origin of ["http://localhost:3019", "http://127.0.0.1:3019", "https://app.example.com"]) {
+      process.env.APP_URL = origin;
+      assert.equal(appOrigin(), origin);
+    }
+    for (const origin of ["http://app.example.com", "http://localhost.evil.example", "https://user:pass@app.example.com", "https://app.example.com/path"]) {
+      process.env.APP_URL = origin;
+      assert.throws(appOrigin, /HTTPS/);
+    }
+  } finally { process.env.APP_URL = previous; }
+});
 
 test.before(async () => { await migrateDatabase(db); await migrateDatabase(db); });
 test.after(() => testDb.close());

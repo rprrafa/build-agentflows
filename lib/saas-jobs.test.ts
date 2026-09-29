@@ -5,7 +5,7 @@ import { createTestDatabase } from "../scripts/saas-test-db";
 import { migrateDatabase } from "./db/migrate";
 import { withTenantJob } from "./tenant-context";
 import { createTenantFlow, getTenantRun, listTenantRuns, putTenantRun, cancelTenantRun } from "./tenant-flows";
-import { enqueueRun, enqueueResume, enqueueKnowledge, claimJob, recoverExpiredJobs, heartbeatJob } from "./saas-jobs";
+import { enqueueRun, enqueueResume, enqueueKnowledge, claimJob, recoverExpiredJobs, heartbeatJob, finishJob } from "./saas-jobs";
 import { runClaimedJob } from "./saas-worker";
 import { withJobLease } from "./saas-job-context";
 import { template, block } from "./flow-types";
@@ -66,6 +66,75 @@ test("aprovação e novo job são uma transação; decisão concorrente só entr
   assert.equal((await db.query("SELECT id FROM jobs WHERE run_id=$1", [queued.run.id])).rows.length, 2);
   await runClaimedJob(db, (await claimJob(db))!);
   assert.equal((await asA(() => getTenantRun(queued.run.id))).status, "completed");
+});
+
+test("fluxos, extração e indexação compartilham a mesma vaga por usuário", async () => {
+  const flow = await asA(create);
+  const base = await asA(() => knowledge.createKnowledgeBase({ name: "Shared capacity" }));
+  const source = await asA(() => knowledge.saveKnowledgeSource(base.id, { name: "Text", loader: "plain", config: { text: "Conteúdo" }, splitter: DEFAULT_SPLITTER, metadata: {} }));
+  const run = await asA(() => enqueueRun(flow.id, "Flow", false, true));
+  const extraction = await asA(() => enqueueKnowledge("extract", base.id, source.id));
+  const indexing = await asA(() => enqueueKnowledge("index", base.id));
+  const active = (await claimJob(db, run.job.id))!;
+  assert.equal(await claimJob(db, extraction.id), undefined);
+  assert.equal(await claimJob(db, indexing.id), undefined);
+  const other = await asB(create);
+  const otherRun = await asB(() => enqueueRun(other.id, "Independent", false, true));
+  assert.equal((await claimJob(db, otherRun.job.id))?.user_id, b);
+  await runClaimedJob(db, active);
+  const next = (await claimJob(db, extraction.id))!;
+  assert.equal(next.id, extraction.id);
+  assert.equal(await claimJob(db, indexing.id), undefined);
+  await runClaimedJob(db, next);
+  assert.equal((await claimJob(db, indexing.id))?.id, indexing.id);
+});
+
+test("limite global impede um terceiro usuário de executar até liberar uma vaga", async () => {
+  const third = randomUUID();
+  await db.query("INSERT INTO users(id,name,email,email_verified_at,beta_status) VALUES($1,'Third user',$2,now(),'approved')", [third, `${third}@example.com`]);
+  for (const owner of [a, b, third]) await withTenantJob(db, owner, async () => {
+    const flow = await create();
+    await enqueueRun(flow.id, "Global capacity", false, true);
+  });
+  const claimed = (await Promise.all(Array.from({ length: 6 }, () => claimJob(db)))).filter((job) => !!job);
+  assert.equal(claimed.length, 2);
+  assert.equal(new Set(claimed.map((job) => job.user_id)).size, 2);
+  await runClaimedJob(db, claimed[0]);
+  const next = await claimJob(db);
+  assert.ok(next);
+  assert.ok(!claimed.some((job) => job.user_id === next.user_id));
+});
+
+test("cancelar tarefa ativa preserva a vaga até confirmação do worker", async () => {
+  const flow = await asA(create), other = await asB(create);
+  const first = await asA(() => enqueueRun(flow.id, "Cancel", false, true));
+  const next = await asA(() => enqueueRun(flow.id, "Wait", false, true));
+  const active = (await claimJob(db, first.job.id))!;
+  await asA(() => cancelTenantRun(first.run.id));
+  assert.equal(await heartbeatJob(db, active), false);
+  assert.equal(await claimJob(db, next.job.id), undefined);
+  await assert.rejects(withJobLease({ id: active.id, owner: a, token: active.lease_token! }, () => asA(() => setConfig("AFTER_CANCEL", "denied"))), /expirou/);
+  const otherRun = await asB(() => enqueueRun(other.id, "Independent", false, true));
+  assert.equal((await claimJob(db, otherRun.job.id))?.user_id, b);
+  await finishJob(db, { ...active, lease_token: randomUUID() });
+  assert.equal(await claimJob(db, next.job.id), undefined, "outro token não libera a vaga");
+  await finishJob(db, active);
+  assert.equal((await claimJob(db, next.job.id))?.id, next.job.id);
+  assert.equal((await asA(() => getTenantRun(first.run.id))).status, "cancelled");
+});
+
+test("cancelamento seguido de crash libera a vaga só após expirar a autorização", async () => {
+  const flow = await asA(create);
+  const first = await asA(() => enqueueRun(flow.id, "Cancel then crash", false, true));
+  const next = await asA(() => enqueueRun(flow.id, "Wait", false, true));
+  const active = (await claimJob(db, first.job.id))!;
+  await asA(() => cancelTenantRun(first.run.id));
+  await recoverExpiredJobs(db);
+  assert.equal(await claimJob(db), undefined);
+  await db.query("UPDATE jobs SET lease_until=now()-interval '1 second' WHERE id=$1", [active.id]);
+  await recoverExpiredJobs(db);
+  assert.equal((await claimJob(db))?.id, next.job.id);
+  assert.equal((await asA(() => getTenantRun(first.run.id))).status, "cancelled");
 });
 
 test("crash não repete efeitos externos e lease antiga não grava execução ou credencial", async () => {

@@ -64,7 +64,7 @@ export function unseal(value: string, context: string) {
 export function appOrigin() {
   const url = new URL(process.env.APP_URL || "http://localhost:3000");
   if (url.username || url.password || url.pathname !== "/" || url.search || url.hash
-    || (url.protocol !== "https:" && !(url.protocol === "http:" && process.env.NODE_ENV !== "production" && ["localhost", "127.0.0.1"].includes(url.hostname)))) {
+    || (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname)))) {
     throw new Error("APP_URL deve ser a origem HTTPS pública do aplicativo.");
   }
   return url.origin;

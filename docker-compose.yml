@@ -1,8 +1,22 @@
 services:
   app:
-    build: .
-    ports: ["3019:10000"]
-    volumes: [dados:/app/data]
-    restart: unless-stopped
+    extends:
+      file: docker-compose.coolify.yml
+      service: app
+    ports: ["127.0.0.1:3019:10000"]
+  worker:
+    extends:
+      file: docker-compose.coolify.yml
+      service: worker
+  postgres:
+    extends:
+      file: docker-compose.coolify.yml
+      service: postgres
+  redis:
+    extends:
+      file: docker-compose.coolify.yml
+      service: redis
 volumes:
   dados:
+  postgres-dados:
+  redis-dados:

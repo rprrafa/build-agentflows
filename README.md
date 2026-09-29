@@ -55,7 +55,7 @@ A tela inicial e o menu dão acesso à jornada de fontes, extração, revisão d
 
 ## Stack
 
-Next.js 16, React 19, TypeScript, Tailwind 4, React Flow (`@xyflow/react`, editor acessível com conexões/arraste/zoom) e SQLite nativo do Node. Conta, sessão, configurações cifradas e MCP reutilizam a infraestrutura da suíte. A IA principal usa login ChatGPT pelo Codex App Server oficial; o OpenRouter é a alternativa explícita, por conexão em Configurações.
+Next.js 16, React 19, TypeScript, Tailwind 4, React Flow, Drizzle e PostgreSQL. Cada usuário tem seu contexto privado; Redis notifica o worker sobre tarefas da fila persistida no PostgreSQL. A remoção dos repositórios e integrações legados está em andamento, conforme [SAAS-PLAN.md](SAAS-PLAN.md). A IA principal usa login ChatGPT pelo Codex App Server oficial; o OpenRouter é configurado por usuário.
 
 ## Rodar localmente
 
@@ -64,7 +64,7 @@ npm ci
 npm run dev
 ```
 
-Node 22.13+ para o servidor; Node 24 para os testes TypeScript. Abra o endereço informado pelo Next e crie a conta administrativa. Clique em **Conectar ChatGPT**, copie o código e conclua o login no endereço oficial da OpenAI. A conta precisa ter acesso ao Codex e autenticação por dispositivo habilitada. O servidor de ferramentas opcional é configurado no bloco Agente.
+Use Node 24 e configure as variáveis de `.env.example`, com PostgreSQL e Redis disponíveis. Execute `npm run worker` em outro processo com o mesmo ambiente. O cadastro exige confirmação de e-mail e aprovação do beta ou convite; não existe conta administrativa automática. Clique em **Conectar ChatGPT**, copie o código e conclua o login no endereço oficial da OpenAI. A conta precisa ter acesso ao Codex e autenticação por dispositivo habilitada.
 
 ```sh
 npm test
@@ -74,11 +74,17 @@ npm run build
 
 ## Rodar com Docker
 
+Configure `.env` com `APP_URL=http://localhost:3019`, chave mestra, senhas do
+PostgreSQL/Redis e Resend, conforme [DEPLOY-COOLIFY.md](DEPLOY-COOLIFY.md).
+
 ```sh
 docker compose up --build
 ```
 
-Abra `http://localhost:3019`. O volume `dados` preserva o banco e a chave mestra. Faça backup de **todo** o diretório de dados, inclusive `chave-mestra`.
+Abra `http://localhost:3019`. O Compose local usa os mesmos quatro serviços do
+Coolify. Os volumes `dados`, `postgres-dados` e `redis-dados` preservam os arquivos,
+banco e notificações. Guarde a `CHAVE_MESTRA` do ambiente junto aos backups;
+sem ela as credenciais cifradas não podem ser recuperadas.
 
 ## Publicar imagem e deploy no Render
 

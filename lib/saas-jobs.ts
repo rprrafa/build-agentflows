@@ -12,7 +12,7 @@ async function capacity(sql: Sql, owner: string) {
   await queueLock(sql);
   const user = await sql.query("SELECT id FROM users WHERE id=$1 AND beta_status='approved' AND email_verified_at IS NOT NULL FOR UPDATE", [owner]);
   if (!user.rows.length) throw new FlowError("Acesso ao beta pendente ou suspenso.", 403);
-  const { rows } = await sql.query<{ own: number; total: number }>("SELECT count(*) FILTER(WHERE user_id=$1)::int own,count(*)::int total FROM jobs WHERE status IN ('queued','running')", [owner]);
+  const { rows } = await sql.query<{ own: number; total: number }>("SELECT count(*) FILTER(WHERE user_id=$1)::int own,count(*)::int total FROM jobs WHERE status IN ('queued','running') OR (status='cancelled' AND lease_until IS NOT NULL)", [owner]);
   if (rows[0].own >= 10 || rows[0].total >= 1000) throw new FlowError("A fila atingiu o limite. Aguarde as tarefas em andamento.", 429);
 }
 async function insertJob(sql: Sql, job: Pick<Job, "user_id" | "kind" | "resource_id" | "run_id" | "base_id" | "source_id">) {
@@ -71,10 +71,12 @@ export async function enqueueKnowledge(kind: "index" | "extract", baseId: string
 export async function claimJob(db: Database, preferredId?: string): Promise<Job | undefined> {
   return db.transaction(async (sql) => {
     await queueLock(sql);
-    if ((await sql.query<{ n: number }>("SELECT count(*)::int n FROM jobs WHERE status='running'", [])).rows[0].n >= 2) return undefined;
+    // Cancellation revokes execution immediately, but holds capacity until the
+    // worker acknowledges shutdown or recovery expires its lease.
+    if ((await sql.query<{ n: number }>("SELECT count(*)::int n FROM jobs WHERE status='running' OR (status='cancelled' AND lease_until IS NOT NULL)", [])).rows[0].n >= 2) return undefined;
     const { rows } = await sql.query<Job>(`SELECT j.* FROM jobs j JOIN users u ON u.id=j.user_id
       WHERE j.status='queued' AND u.beta_status='approved' AND u.email_verified_at IS NOT NULL
-      AND NOT EXISTS(SELECT 1 FROM jobs busy WHERE busy.user_id=j.user_id AND busy.status='running')
+      AND NOT EXISTS(SELECT 1 FROM jobs busy WHERE busy.user_id=j.user_id AND (busy.status='running' OR (busy.status='cancelled' AND busy.lease_until IS NOT NULL)))
       ORDER BY (j.id::text=$1) DESC,j.created_at,j.id LIMIT 1 FOR UPDATE OF j SKIP LOCKED`, [preferredId || ""]);
     if (!rows[0]) return undefined;
     const job = rows[0], token = randomUUID();
@@ -89,6 +91,7 @@ export async function heartbeatJob(db: Database, job: Job) {
 }
 export async function finishJob(db: Database, job: Job, error?: string) {
   await db.transaction(async (sql) => {
+    await sql.query("UPDATE jobs SET lease_until=NULL,finished_at=now() WHERE id=$1 AND lease_token=$2 AND status='cancelled'", [job.id, job.lease_token]);
     const { rows } = await sql.query<Job>("UPDATE jobs SET status=$3,error=$4,finished_at=now(),lease_until=NULL WHERE id=$1 AND lease_token=$2 AND status='running' AND lease_until>now() RETURNING *", [job.id, job.lease_token, error ? "failed" : "done", error || null]);
     if (error && rows[0]?.run_id) await sql.query(`UPDATE runs SET status='failed',body=(body-'queued') || $3::jsonb
       WHERE user_id=$1 AND id=$2 AND status='running'`, [rows[0].user_id, rows[0].run_id, JSON.stringify({ status: "failed", error, updatedAt: new Date().toISOString() })]);
@@ -97,6 +100,7 @@ export async function finishJob(db: Database, job: Job, error?: string) {
 export async function recoverExpiredJobs(db: Database) {
   return db.transaction(async (sql) => {
     await queueLock(sql);
+    await sql.query("UPDATE jobs SET lease_until=NULL,finished_at=now() WHERE status='cancelled' AND lease_until<now()");
     const { rows } = await sql.query<Job>(`SELECT * FROM jobs WHERE status='running' AND lease_until<now() FOR UPDATE SKIP LOCKED`);
     for (const job of rows) {
       const error = "A tarefa foi interrompida. Revise os efeitos já realizados antes de iniciar outra execução.";

@@ -121,7 +121,8 @@ export async function cancelTenantRun(id: string) {
     for (const trace of run.trace) if (trace.status === "running") { trace.status = "failed"; trace.output = "A execução foi cancelada."; trace.ms = Date.now() - Date.parse(trace.at); }
     run.status = "cancelled"; run.updatedAt = new Date().toISOString();
     await sql.query("UPDATE runs SET status='cancelled',body=$3 WHERE user_id=$1 AND id=$2", [user.id, id, JSON.stringify(run)]);
-    await sql.query("UPDATE jobs SET status='cancelled',lease_until=NULL,finished_at=now() WHERE user_id=$1 AND run_id=$2 AND status IN ('queued','running')", [user.id, id]);
+    // Keep a running worker's slot until it stops; queued jobs release immediately.
+    await sql.query("UPDATE jobs SET status='cancelled',finished_at=CASE WHEN status='queued' THEN now() ELSE NULL END WHERE user_id=$1 AND run_id=$2 AND status IN ('queued','running')", [user.id, id]);
     return run;
   });
 }
