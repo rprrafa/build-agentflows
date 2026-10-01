@@ -14,6 +14,6 @@ export function mediaKey(provider: MediaProvider) {
   currentTenant();
   const metadata = MEDIA_PROVIDERS.find((item) => item.id === provider)!;
   const key = getConfig(metadata.key)?.trim();
-  if (!key) throw new FlowError(`Adicione a chave de ${metadata.name} em Configurações.`, 409);
+  if (!key) throw new FlowError(`Adicione a chave de ${metadata.name} em Credenciais.`, 409);
   return key;
 }

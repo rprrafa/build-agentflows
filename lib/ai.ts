@@ -44,8 +44,8 @@ export class ErroIA extends Error {
   }
 }
 
-const ACAO_CONECTAR_IA = { rotulo: "Conectar a IA", url: "/configuracoes" };
-const ACAO_TROCAR_MODELO = { rotulo: "Trocar o modelo", url: "/configuracoes" };
+const ACAO_CONECTAR_IA = { rotulo: "Conectar a IA", url: "/credenciais" };
+const ACAO_TROCAR_MODELO = { rotulo: "Trocar o modelo", url: "/credenciais" };
 const ACAO_ADICIONAR_CREDITOS = { rotulo: "Adicionar créditos", url: "https://openrouter.ai/settings/credits" };
 
 /** Único ponto que traduz uma resposta HTTP não-ok do OpenRouter (ou uma falha de rede) em ErroIA. O detalhe técnico do provedor nunca chega à tela: só ao console.error. Exportada só para o caso de demonstração local (?erro=<código> em dev) montar o mesmo ErroIA que uma falha real geraria. */
@@ -53,7 +53,7 @@ export function interpretarFalha(res: Response, detalheBruto: string): ErroIA {
   console.error("Falha na chamada à IA:", res.status, detalheBruto.slice(0, 200));
 
   if (res.status === 401) {
-    return new ErroIA("chave_invalida", "A chave da IA foi recusada. Conecte de novo em Configurações.", 401, ACAO_CONECTAR_IA);
+    return new ErroIA("chave_invalida", "A chave da IA foi recusada. Revise a conexão em Credenciais.", 401, ACAO_CONECTAR_IA);
   }
   if (res.status === 402) {
     return new ErroIA(
@@ -71,10 +71,10 @@ export function interpretarFalha(res: Response, detalheBruto: string): ErroIA {
         429
       );
     }
-    return new ErroIA("fila_cheia", "O modelo gratuito está com fila cheia agora. Tente de novo em alguns segundos ou troque de modelo em Configurações.", 429);
+    return new ErroIA("fila_cheia", "O modelo gratuito está com fila cheia agora. Tente de novo em alguns segundos ou troque o modelo no bloco.", 429);
   }
   if (res.status === 404 || /No endpoints found|not a valid model/i.test(detalheBruto)) {
-    return new ErroIA("modelo_indisponivel", "O modelo escolhido não está disponível agora. Escolha outro em Configurações.", 404, ACAO_TROCAR_MODELO);
+    return new ErroIA("modelo_indisponivel", "O modelo escolhido não está disponível agora. Escolha outro no bloco.", 404, ACAO_TROCAR_MODELO);
   }
   if (res.status === 400 && /context length|too long/i.test(detalheBruto)) {
     return new ErroIA(
@@ -101,7 +101,7 @@ export function respostaErro(err: unknown): Response {
 
 async function chamarOpenRouter(body: Record<string, unknown>): Promise<Response> {
   if (!apiKey()) {
-    throw new ErroIA("chave_ausente", "Nenhuma chave da IA foi configurada. Conecte em Configurações.", 401, ACAO_CONECTAR_IA);
+    throw new ErroIA("chave_ausente", "Nenhuma chave da IA foi configurada. Conecte em Credenciais.", 401, ACAO_CONECTAR_IA);
   }
   try {
     return await fetch(OPENROUTER_URL, {
@@ -234,7 +234,7 @@ export async function askJSON<T = unknown>(opts: { system: string; prompt: strin
     } catch {
       throw new ErroIA(
         "resposta_invalida",
-        "A IA respondeu em um formato inesperado. Tente de novo; se repetir, troque para um modelo pago em Configurações.",
+        "A IA respondeu em um formato inesperado. Tente de novo; se repetir, troque o modelo no bloco.",
         502
       );
     }

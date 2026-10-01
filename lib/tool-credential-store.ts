@@ -1,3 +1,4 @@
+import { aiProvider, modelProviderId } from "./ai-providers";
 import { embeddingCredentialProvider, embeddingCredentialKey, embeddingCredentialUrl } from "./embedding-credentials";
 import { knowledgeUrl } from "./knowledge-http";
 import type { IndexConfig } from "./knowledge-types";
@@ -52,6 +53,13 @@ export function listToolCredentials(provider?: string): SavedToolCredential[] {
   return rows.filter((r) => !provider || r.provider === provider).map(summary);
 }
 export function getToolCredential(id: string) { return summary(row(id)); }
+export function resolveCredentialKey(id: string, provider: string, key: string) {
+  const r = row(id);
+  if (r.provider !== provider || !schema(provider).some(field => field.chave === key)) throw new FlowError("A credencial não pertence ao fornecedor selecionado.");
+  const value = values(r)[key];
+  if (!value) throw new FlowError("Revise a chave de acesso da credencial.", 409);
+  return value;
+}
 export function saveToolCredential(input: unknown, id?: string): SavedToolCredential {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new FlowError("Preencha os dados da credencial.");
   const body = input as { name?: unknown; provider?: unknown; fields?: unknown };
@@ -87,12 +95,20 @@ export function saveToolCredential(input: unknown, id?: string): SavedToolCreden
     if (!existing && rows.length >= 200) throw new FlowError("Use até 200 credenciais por conta.", 413);
     setConfig(TENANT_INDEX, JSON.stringify([...rows.filter((r) => r.id !== saved.id), saved]));
     setConfig(secretKey(saved.id), JSON.stringify(data));
+    const ai = provider.startsWith("ai_") ? aiProvider(provider.slice(3)) : undefined;
+    if (ai) {
+      const defaultKey = `AI_DEFAULT_${ai.id.toUpperCase()}_CREDENTIAL`;
+      if (!getConfig(defaultKey) && !getConfig(ai.key)) setConfig(defaultKey, saved.id);
+      if (getConfig(defaultKey) === saved.id) setConfig(ai.key, data[ai.key]);
+    }
   });
   return summary(saved);
 }
 
 export function deleteToolCredential(id: string) {
-  row(id);
+  const deleted = row(id);
+  const defaultAi = deleted.provider.startsWith("ai_") ? aiProvider(deleted.provider.slice(3)) : undefined;
+  const isDefault = defaultAi && getConfig(`AI_DEFAULT_${defaultAi.id.toUpperCase()}_CREDENTIAL`) === id;
   const { user, config } = currentTenant();
   // This check runs under the same user lock as flow writes and config commit.
   // The route cannot return success before the guard and deletion have committed.
@@ -104,10 +120,15 @@ export function deleteToolCredential(id: string) {
       const graphs = await sql.query<{ nodes: { data: { config: Record<string, string> } }[] }>(`SELECT body#>'{graph,nodes}' AS nodes FROM flows WHERE user_id=$1
         UNION ALL SELECT body#>'{published,nodes}' AS nodes FROM flows WHERE user_id=$1 AND body#>'{published,nodes}' IS NOT NULL
         UNION ALL SELECT body#>'{graph,nodes}' AS nodes FROM runs WHERE user_id=$1 AND status IN ('running','waiting')`, [user.id]);
-      if (graphs.rows.some(({ nodes }) => nodes.some((node) => readToolCards(node.data.config.tools || "", node.data.config.toolCards).some((card) => card.credentialId === id)))) throw new FlowError("Esta credencial está em uso. Troque a conexão nos agentes ou finalize as execuções antes de excluir.", 409);
+      if (graphs.rows.some(({ nodes }) => nodes.some((node) => node.data.config.modelCredentialId === id || (isDefault && !node.data.config.modelCredentialId && modelProviderId(node.data.config.model) === defaultAi.id) || readToolCards(node.data.config.tools || "", node.data.config.toolCards).some((card) => card.credentialId === id)))) throw new FlowError("Esta credencial está em uso. Troque a conexão nos agentes ou finalize as execuções antes de excluir.", 409);
     });
     setConfig(TENANT_INDEX, JSON.stringify(tenantRows().filter((row) => row.id !== id)));
     setConfig(secretKey(id), null);
+    const ai = deleted.provider.startsWith("ai_") ? aiProvider(deleted.provider.slice(3)) : undefined;
+    if (ai && getConfig(`AI_DEFAULT_${ai.id.toUpperCase()}_CREDENTIAL`) === id) {
+      setConfig(`AI_DEFAULT_${ai.id.toUpperCase()}_CREDENTIAL`, null);
+      setConfig(ai.key, null);
+    }
   });
   return;
 }

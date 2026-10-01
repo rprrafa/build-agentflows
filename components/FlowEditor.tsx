@@ -140,11 +140,12 @@ export function FlowEditor({ id }: { id: string }) {
   }, []);
   useEffect(() => {
     const refresh = () => {
-      void request<{ openrouter: { conectado: boolean }; media: { conectado: boolean }[] }>("/api/conexoes").then((s) => setOpenrouterConnected(s.openrouter.conectado || s.media.some((provider) => provider.conectado))).catch(() => {});
+      void request<{ provider: string; configured: boolean }[]>("/api/tool-credentials").then(items => setOpenrouterConnected(items.some(c => c.provider.startsWith("ai_") && c.configured))).catch(() => {});
     };
     refresh();
     window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
+    window.addEventListener("credentials-changed", refresh);
+    return () => { window.removeEventListener("focus", refresh); window.removeEventListener("credentials-changed", refresh); };
   }, []);
   useEffect(() => {
     let alive = true;
@@ -1030,7 +1031,7 @@ export function FlowEditor({ id }: { id: string }) {
           node={node}
           nodes={graph.nodes}
           models={connection?.models || []}
-          connected={aiConnected}
+          connected={!!connection?.account}
           onConnect={() => setConnect(true)}
           onRename={(label) => renameBlock(node.id, label)}
           onClose={() => setEditing(null)}
@@ -1162,7 +1163,7 @@ export function FlowEditor({ id }: { id: string }) {
             setNaming(false); firstName.current?.(nameDraft.trim()); firstName.current = null;
           }}>
             <label className="flow-name-field">Nome do fluxo
-              <input aria-label="Nome do fluxo" autoFocus required maxLength={100} value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} placeholder="Dê um nome ao seu fluxo" />
+              <input aria-label="Nome do fluxo" data-autofocus autoFocus required maxLength={100} value={nameDraft} onChange={(event) => setNameDraft(event.target.value)} placeholder="Dê um nome ao seu fluxo" />
             </label>
             <div className="modal-actions">
               <button type="submit" className="studio-button primary" disabled={!nameDraft.trim()}>Salvar</button>

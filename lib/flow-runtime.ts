@@ -7,15 +7,16 @@ import { cancelCommands, getSession, assertEmbedRun } from "./embed-store";
 import { attachmentContext, resolveAttachments, markAttachmentsUsed } from "./attachment-service";
 import { assertImageModels } from "./attachment-models";
 import { reachableAiNodes } from "./model-capabilities";
-import { isMediaModel, mediaModel } from "./media-models";
-import { mediaKey } from "./media-credentials";
+import { isMediaModel } from "./media-models";
 import { runMedia } from "./media-runtime";
 import { tenantConversationHistory } from "./conversation";
 import { memoryPrompt } from "./flow-memory";
 import { randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { chatGPT } from "./chatgpt";
-import { isOpenRouterModel, openRouterKey, runOpenRouter } from "./openrouter";
+import { modelProviderId } from "./ai-providers";
+import { modelCredentialKey } from "./ai-credentials";
+import { runProviderModel } from "./ai-runtime";
 import { getConfig } from "./store";
 import { resolveTools, callTool } from "./tools";
 import {
@@ -56,7 +57,7 @@ async function agent(n: Block, r: Run, signal: AbortSignal, details: Partial<Tra
           .filter(Boolean)
       : [];
   const tools = [...(allowed.length ? await resolveTools(allowed, c.toolCards) : []), ...(n.data.kind === "agent" ? await pageTools(r, signal) : [])];
-  const provider = isOpenRouterModel(c.model) ? runOpenRouter : chatGPT().run.bind(chatGPT());
+  const provider = modelProviderId(c.model) !== "chatgpt" ? (options: Parameters<ReturnType<typeof chatGPT>["run"]>[0]) => runProviderModel(c, options) : chatGPT().run.bind(chatGPT());
   let missingUsage = false;
   let progress = Promise.resolve(), lastProgress = 0;
   let progressError: unknown;
@@ -393,11 +394,10 @@ export async function buildRun(
   if (demo !== true) {
     const nodes = reachableAiNodes(graph);
     for (const node of nodes) {
-      const selected = mediaModel(node.data.config.model);
-      if (selected) mediaKey(selected.provider);
-      else if (isOpenRouterModel(node.data.config.model) && !openRouterKey()) throw new FlowError("Conecte o OpenRouter em Configurações para executar este fluxo.", 409);
+      const provider = modelProviderId(node.data.config.model);
+      if (provider !== "chatgpt") modelCredentialKey(provider, node.data.config.modelCredentialId);
     }
-    if (nodes.some((node) => !isMediaModel(node.data.config.model) && !isOpenRouterModel(node.data.config.model)) && !(await chatGPT().account()).account)
+    if (nodes.some(node => modelProviderId(node.data.config.model) === "chatgpt") && !(await chatGPT().account()).account)
       throw new FlowError("Conecte o ChatGPT para executar os blocos que usam sua assinatura.", 409);
   }
   const now = new Date().toISOString();

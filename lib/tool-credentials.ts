@@ -1,3 +1,4 @@
+import { AI_PROVIDERS, aiCredentialProvider } from "./ai-providers";
 import { EMBEDDING_PROVIDERS } from "./knowledge-providers";
 import { embeddingCredentialKey, embeddingCredentialUrl, embeddingCredentialProvider } from "./embedding-credentials";
 // Credenciais das ferramentas prontas (mesmos serviços do catálogo de ferramentas do Flowise).
@@ -10,6 +11,7 @@ const oauth = (provider: string, label: string, link: string): Credential[] => [
   { chave: `TOOL_${provider}_CLIENT_SECRET`, rotulo: "Segredo do aplicativo (para renovar)", secret: true, optional: true },
 ];
 export const TOOL_CREDENTIALS: Record<string, Credential[]> = {
+  ...Object.fromEntries(AI_PROVIDERS.map(p => [aiCredentialProvider(p.id), [{ chave: p.key, rotulo: "Chave de acesso", secret: true, link: p.link }]])),
   ...Object.fromEntries(EMBEDDING_PROVIDERS.map(p => [embeddingCredentialProvider(p.id), [
     { chave: embeddingCredentialKey(p.id), rotulo: "Chave de acesso", secret: true, optional: p.id === "ollama", link: p.id === "openai" ? "https://platform.openai.com/api-keys" : p.id === "gemini" ? "https://aistudio.google.com/apikey" : p.id === "voyage" ? "https://dash.voyageai.com/" : undefined },
     { chave: embeddingCredentialUrl(p.id), rotulo: "Endereço do serviço", defaultValue: p.url },
@@ -40,6 +42,7 @@ export const TOOL_CREDENTIALS: Record<string, Credential[]> = {
 };
 export const TOOL_CREDENTIAL_KEYS = Object.values(TOOL_CREDENTIALS).flatMap((l) => l.map((c) => c.chave));
 export const TOOL_CREDENTIAL_LABELS: Record<string, string> = {
+  ...Object.fromEntries(AI_PROVIDERS.map(p => [aiCredentialProvider(p.id), p.name + " · Modelos"])),
   ...Object.fromEntries(EMBEDDING_PROVIDERS.map(p => [embeddingCredentialProvider(p.id), p.name])),
   knowledge_postgres: "Postgres · Base de Conhecimento",
   github_mcp: "Github MCP", postgres_mcp: "Postgres MCP", custom_mcp: "Custom MCP", composio: "Composio",

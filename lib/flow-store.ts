@@ -1,3 +1,4 @@
+import { modelSettings } from "./ai-providers";
 import { conditionCriteria, COMPARISONS } from "./flow-conditions";
 import { memorySettings } from "./memory-settings";
 import { validateMediaConfig } from "./media-models";
@@ -57,7 +58,7 @@ export function validateGraph(value: unknown, executable = false): Graph {
     }
     if (n.data.kind === "agent" || n.data.kind === "llm") {
       try { memorySettings(n.data.config); } catch (error) { throw new FlowError((error as Error).message); }
-      try { validateMediaConfig(n.data.config); } catch (error) { throw new FlowError((error as Error).message); }
+      try { modelSettings(n.data.config); validateMediaConfig(n.data.config); } catch (error) { throw new FlowError((error as Error).message); }
       try { knowledgeSettings(n.data.config); } catch (error) { throw new FlowError((error as Error).message); }
     }
     if (n.data.kind === "agent") {

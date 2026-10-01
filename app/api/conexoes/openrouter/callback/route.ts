@@ -1,5 +1,5 @@
 // Volta do OpenRouter: troca o código pela chave e grava no banco cifrado.
-import { setConfig } from "@/lib/store";
+import { saveOpenRouterOAuth } from "@/lib/ai-credentials";
 import { requestApi } from "@/lib/flow-api";
 import { consumeIntegrationOAuth } from "@/lib/tenant-oauth";
 async function complete(req: Request) {
@@ -7,20 +7,23 @@ async function complete(req: Request) {
   const code = url.searchParams.get("code");
   const cookie = req.headers.get("cookie") || "";
   const verifier = /(?:^|;\s*)or_verifier=([^;]+)/.exec(cookie)?.[1];
+  let popup = false;
+  let credentialId = "";
   const voltar = (erro?: string) =>
     new Response(null, {
       status: 302,
       headers: {
-        Location: erro
-          ? `/configuracoes?erro=${encodeURIComponent(erro)}`
-          : "/configuracoes?conectado=openrouter",
+        Location: popup
+          ? `/credenciais/openrouter?${new URLSearchParams(erro ? { erro } : { credentialId })}`
+          : erro ? `/credenciais?erro=${encodeURIComponent(erro)}` : "/credenciais?conectado=openrouter",
         "Set-Cookie": "or_verifier=; Path=/; Max-Age=0",
       },
     });
   if (!code || !verifier)
     return voltar("A conexão com o OpenRouter expirou. Tente de novo.");
   try {
-    await consumeIntegrationOAuth("openrouter", url.searchParams.get("state"), verifier);
+    const context = await consumeIntegrationOAuth("openrouter", url.searchParams.get("state"), verifier);
+    popup = !!context?.popup;
     const r = await fetch("https://openrouter.ai/api/v1/auth/keys", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -30,7 +33,7 @@ async function complete(req: Request) {
     const data = r.ok ? ((await r.json()) as { key?: string }) : {};
     if (!data.key)
       return voltar("O OpenRouter não concluiu a conexão. Tente de novo.");
-    setConfig("OPENROUTER_API_KEY", data.key);
+    credentialId = saveOpenRouterOAuth(data.key).id;
     return voltar();
   } catch (err) {
     void err;

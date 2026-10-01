@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import { attachmentContext, saveAttachment } from "./attachment-service";
-import { mediaKey } from "./media-credentials";
+import { modelCredentialKey } from "./ai-credentials";
 import { mediaModel, validateMediaConfig } from "./media-models";
 import { generateMedia } from "./media-provider";
 import { memoryPrompt } from "./flow-memory";
@@ -11,7 +11,7 @@ export async function runMedia(n: Block, run: Run, prompt: string, instructions:
   const config = n.data.config;
   validateMediaConfig(config);
   const model = mediaModel(config.model)!;
-  const key = mediaKey(model.provider);
+  const key = modelCredentialKey(model.provider, config.modelCredentialId);
   // Generated files remain private attachments. They are not published as provider URLs.
   const context = await attachmentContext(run.flowId, run.attachments);
   const message = await memoryPrompt(run, config, prompt, async () => { throw new FlowError("Este modelo não resume a memória."); });

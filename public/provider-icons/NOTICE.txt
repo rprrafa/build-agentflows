@@ -1,0 +1,4 @@
+Anthropic, OpenRouter, Groq, Replicate: LobeHub lobe-icons (MIT), https://github.com/lobehub/lobe-icons.
+Higgsfield: favicon from https://higgsfield.ai/favicon.ico.
+MuAPI: icon from https://muapi.ai/icon.png.
+Provider marks identify their respective services.

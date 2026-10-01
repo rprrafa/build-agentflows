@@ -5,7 +5,7 @@ type Connection = ReturnType<typeof newClient>;
 let connection: Connection | undefined;
 let connecting: Promise<Connection> | undefined;
 const KEY = "agentflows:jobs:v1";
-async function client() {
+export async function redisClient() {
   if (!process.env.REDIS_URL) throw new Error("Configure REDIS_URL.");
   if (connection?.isReady) return connection;
   if (connecting) return connecting;
@@ -19,13 +19,13 @@ async function client() {
 /** Queue contains opaque job IDs only. The database handles authorization, leases and recovery. */
 export async function notifyJob(id: string) {
   try {
-    const redis = await client();
+    const redis = await redisClient();
     await redis.multi().rPush(KEY, id).lTrim(KEY, -2000, -1).exec();
     return true;
   } catch { return false; } // Accepted PostgreSQL jobs remain available to the worker's reconciliation.
 }
 export async function nextJobNotification() {
-  try { return await (await client()).lPop(KEY); } catch { return null; }
+  try { return await (await redisClient()).lPop(KEY); } catch { return null; }
 }
-export async function queueReady() { try { return await (await client()).ping() === "PONG"; } catch { return false; } }
+export async function queueReady() { try { return await (await redisClient()).ping() === "PONG"; } catch { return false; } }
 export function closeQueue() { if (connection?.isOpen) connection.destroy(); connection = undefined; }

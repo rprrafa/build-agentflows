@@ -17,7 +17,14 @@ export function ToolCredentialsManager() {
     catch (e) { setError(e instanceof Error ? e.message : "Não foi possível carregar as credenciais."); }
     finally { setLoading(false); }
   }, []);
-  useEffect(() => { const timer = setTimeout(() => void load(), 0); return () => clearTimeout(timer); }, [load]);
+  useEffect(() => {
+    const query = new URLSearchParams(location.search);
+    const timer = setTimeout(() => {
+      void load().then(() => { if (query.has("erro")) setError(query.get("erro") || ""); });
+      if (query.has("erro") || query.has("conectado")) history.replaceState(null, "", "/credenciais");
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [load]);
   async function remove() {
     if (!removing) return;
     setBusy(true); setError("");
@@ -28,11 +35,11 @@ export function ToolCredentialsManager() {
   const toolFor = (c: SavedToolCredential) => CREDENTIAL_CATALOG.find((tool) => tool.provider === c.provider);
   const shown = items.filter((c) => `${c.name} ${c.providerLabel} ${toolFor(c)?.name || ""}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   return <section className="tool-credentials-manager" id="credenciais">
-    <div className="settings-section-heading"><Icon name="link" size={18} /><div><h2>Ferramentas e embeddings</h2><p>Guarde suas conexões e reutilize-as nos agentes e nas bases de conhecimento.</p></div></div>
+    <div className="settings-section-heading"><Icon name="link" size={18} /><div><h2>Modelos, ferramentas e embeddings</h2><p>Guarde suas conexões e reutilize-as nos agentes e nas bases de conhecimento.</p></div></div>
     <div className="credential-manager-card">
       <div className="credential-manager-toolbar"><label>Buscar conexão<input type="search" value={query} placeholder="Nome ou serviço" onChange={(e) => setQuery(e.target.value)} /></label><button type="button" className="studio-button" onClick={() => setEditor("new")}><Icon name="plus" size={16} />Nova credencial</button></div>
       {loading && <p role="status">Carregando conexões…</p>}
-      {!loading && !items.length && <p>Nenhuma credencial salva. Você também pode criar uma ao adicionar uma ferramenta no agente.</p>}
+      {!loading && !items.length && <p>Nenhuma credencial salva. Você também pode criar uma ao adicionar um modelo ou uma ferramenta no bloco.</p>}
       {!!items.length && !shown.length && <p>Nenhuma conexão encontrada para essa busca.</p>}
       {shown.map((c) => <div className="credential-manager-row" key={c.id}><div className="credential-manager-identity"><ToolLogo id={toolFor(c)?.id || `interno:${c.provider}`} /><div><strong>{c.name}</strong><small>{toolFor(c)?.name || c.providerLabel} · {c.configured ? "Credencial salva" : "Revisar conexão"}</small></div></div><div className="studio-actions">
         <IconButton icon="pencil" label={`Editar credencial ${c.name}`} onClick={() => setEditor(c)} /><IconButton icon="trash" label={`Excluir credencial ${c.name}`} onClick={() => { setError(""); setRemoving(c); }} />

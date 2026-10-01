@@ -15,7 +15,7 @@ export function ToolSelect({ value, used = [], catalog = AGENT_TOOL_CATALOG, dis
   const id = useId(), input = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false), [query, setQuery] = useState(""), [active, setActive] = useState(0);
   const selected = catalog.find((item) => item.id === value);
-  const options = catalog.filter((item) => normalize(item.name).includes(normalize(query)) && (!used.includes(item.id) || item.id === value));
+  const options = catalog.filter((item) => normalize(`${item.name} ${item.id}`).includes(normalize(query)) && (!used.includes(item.id) || item.id === value));
   useEffect(() => { if (open) document.getElementById(`${id}-${active}`)?.scrollIntoView({ block: "nearest" }); }, [id, active, open]);
   function choose(target: string) { onChange(target); setOpen(false); setQuery(""); input.current?.focus(); }
   return <div className="tool-select" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) { setOpen(false); setQuery(""); } }}>

@@ -1,14 +1,15 @@
 // Conexão em um clique com o OpenRouter (PKCE): gera o verificador, guarda em cookie e redireciona.
 import { createHash, randomBytes } from "node:crypto";
 import { appOrigin } from "@/lib/saas-security";
-import { setConfig } from "@/lib/store";
+import { deleteToolCredential } from "@/lib/tool-credential-store";
+import { getConfig, setConfig } from "@/lib/store";
 import { requestApi } from "@/lib/flow-api";
 import { beginIntegrationOAuth } from "@/lib/tenant-oauth";
-async function start() {
+async function start(req: Request) {
   const verifier = randomBytes(32).toString("base64url");
   const challenge = createHash("sha256").update(verifier).digest("base64url");
   const callbackUrl = new URL(`${appOrigin()}/api/conexoes/openrouter/callback`);
-  callbackUrl.searchParams.set("state", await beginIntegrationOAuth("openrouter", verifier));
+  callbackUrl.searchParams.set("state", await beginIntegrationOAuth("openrouter", verifier, { popup: new URL(req.url).searchParams.get("popup") === "1" }));
   const callback = callbackUrl.toString();
   const destino = new URL("https://openrouter.ai/auth");
   destino.searchParams.set("callback_url", callback);
@@ -23,9 +24,11 @@ async function start() {
     },
   });
 }
-export async function GET(req: Request) { return requestApi(req, start); }
+export async function GET(req: Request) { return requestApi(req, () => start(req)); }
 export async function DELETE(req?: Request) {
   return requestApi(req, () => {
+    const id = getConfig("AI_DEFAULT_OPENROUTER_CREDENTIAL");
+    if (id) deleteToolCredential(id);
     setConfig("OPENROUTER_API_KEY", null);
     return { ok: true };
   });

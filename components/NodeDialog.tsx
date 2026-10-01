@@ -11,6 +11,7 @@ import { ToolPicker } from "./ToolPicker";
 import { ModelPicker } from "./ModelPicker";
 import { memorySettings } from "@/lib/memory-settings";
 import { isMediaModel, validateMediaConfig } from "@/lib/media-models";
+import { modelSettings } from "@/lib/ai-providers";
 import { MemoryFields } from "./MemoryFields";
 const fields: Record<Kind, string[]> = {
   start: [],
@@ -140,7 +141,7 @@ export function NodeDialog({
       }
     }
     if (k === "agent" || k === "llm") {
-      try { memorySettings(c); validateMediaConfig(c); } catch (error) {
+      try { memorySettings(c); modelSettings(c); validateMediaConfig(c); } catch (error) {
         setCloseError((error as Error).message);
         return false;
       }
@@ -203,9 +204,10 @@ export function NodeDialog({
               setDraft({ ...draft, data: { ...draft.data, label: e.target.value } });
             }}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && draft.data.label.trim()) {
+              if (e.key === "Enter" && !e.nativeEvent.isComposing && draft.data.label.trim()) {
                 e.preventDefault();
                 saveName();
+                e.currentTarget.blur();
               }
             }}
           />
@@ -284,12 +286,10 @@ export function NodeDialog({
                 value={c[key] || ""}
                 chatModels={models}
                 connected={connected}
-                onChange={(v) => change(key, v)}
+                config={c}
+                onConfigChange={(values) => setDraft(d => ({ ...d, data: { ...d.data, config: { ...d.data.config, ...values } } }))}
+                onConnect={onConnect}
               />
-              {!connected && !isMediaModel(c.model) && <small>
-                Conecte o ChatGPT para executar de verdade.{" "}
-                <button type="button" className="node-connect-link" onClick={() => { if (saveAndClose()) onConnect(); }}>Conectar</button>
-              </small>}
               {isMediaModel(c.model) && <small>Use as instruções e a mensagem para descrever a imagem. Remova ferramentas e bases deste bloco; elas podem ser usadas em um bloco de texto anterior. A memória aceita Todas as mensagens ou Últimas mensagens, sem resumo.</small>}
               </>
             ) : key === "operator" || key === "method" ? (

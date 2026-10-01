@@ -3,10 +3,8 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { Flow } from "@/lib/flow-types";
 import { Icon, StudioShell, request } from "./StudioUI";
 import { EmbedSecurity } from "./EmbedSecurity";
-import { ChatGPTUsage } from "./ChatGPTUsage";
 import { WhatsAppTerms } from "./WhatsAppTerms";
 import { ChatGPTConnection, useChatGPT } from "./ChatGPTConnection";
-import { MEDIA_PROVIDERS, type MediaProvider } from "@/lib/media-models";
 
 type CampoStatus = {
   chave: string;
@@ -21,8 +19,6 @@ type CampoStatus = {
   valor?: string;
 };
 type Status = {
-  media: { id: MediaProvider; conectado: boolean; mascarado: string | null }[];
-  openrouter: { conectado: boolean; mascarado: string | null };
   mcp: { prefixo: string; nome: string; url: string; autorizado: boolean }[];
   whatsapp: {
     provedor: string | null;
@@ -223,7 +219,7 @@ export function Connections() {
           <div>
             <div className="studio-breadcrumb">Workspace / Configurações</div>
             <h1>Configurações</h1>
-            <p>Gerencie as contas, ferramentas e canais dos seus agentes.</p>
+            <p>Configure os canais, a voz e a segurança dos seus agentes.</p>
           </div>
         </header>
         {error && (
@@ -232,92 +228,7 @@ export function Connections() {
           </div>
         )}
         {!status && !error && <p role="status" className="settings-loading">Carregando configurações…</p>}
-        <div className="settings-section-heading"><Icon name="spark" size={18} /><div><h2>Modelos de IA</h2><p>Conecte suas contas e escolha o modelo dentro de cada bloco.</p></div></div>
-        <div className="connections-grid settings-models">
-          <Card
-            icon={<Icon name="spark" size={22} />}
-            title="ChatGPT"
-            badge="Principal"
-            connected={!!connection?.account}
-            description="Execute seus agentes com os modelos e limites da sua assinatura."
-          >
-            {connection?.account ? (
-              <div className="connection-account"><strong>{connection.account.email}</strong><span>{connection.account.planType ? `Plano ${connection.account.planType} · ` : ""}{connection.models.length} modelos disponíveis</span></div>
-            ) : (
-              <p>Conecte uma vez pelo código de dispositivo; a conta fica nesta instalação.</p>
-            )}
-            <div className="studio-actions">
-              <button className="studio-button primary" onClick={() => setConnect(true)}>
-                {connection?.account ? "Gerenciar conexão" : "Conectar ChatGPT"}
-              </button>
-            </div>
-            {connection?.account && <details className="settings-usage"><summary>Ver limites da assinatura<Icon name="chevron" size={14} /></summary><ChatGPTUsage /></details>}
-          </Card>
-          <Card
-            icon={<Icon name="link" size={22} />}
-            title="OpenRouter"
-            connected={!!status?.openrouter.conectado}
-            description="Escolha modelos de diferentes provedores para cada agente."
-          >
-            {status?.openrouter.conectado ? (
-              <>
-                <p>
-                  Chave <code>{status.openrouter.mascarado}</code> guardada na sua conta.
-                </p>
-                <div className="studio-actions">
-                  <button
-                    className="studio-button"
-                    disabled={busy === "test:openrouter"}
-                    onClick={() => test("openrouter")}
-                  >
-                    {busy === "test:openrouter" ? "Testando…" : "Testar"}
-                  </button>
-                  <button
-                    className="studio-button subtle danger"
-                    disabled={!!busy}
-                    onClick={() =>
-                      act("or-off", async () => {
-                        await request("/api/conexoes/openrouter", "DELETE");
-                        await load();
-                        setNotice("OpenRouter desconectado.");
-                      })
-                    }
-                  >
-                    Desconectar
-                  </button>
-                </div>
-                {result("openrouter")}
-              </>
-            ) : (
-              <>
-                <p>Autorize sua conta para acessar os modelos disponíveis no OpenRouter.</p>
-                <div className="studio-actions">
-                  <a className="studio-button primary" href="/api/conexoes/openrouter">
-                    <Icon name="link" size={16} />
-                    Conectar com OpenRouter
-                  </a>
-                </div>
-              </>
-            )}
-          </Card>
-        </div>
-
-        <div className="settings-section-heading"><Icon name="link" size={18} /><div><h2>Geração de imagens</h2><p>Chaves cifradas e exclusivas da sua conta. Escolha o modelo em um bloco Agente ou LLM.</p></div></div>
-        <div className="settings-channels">
-          {MEDIA_PROVIDERS.map((provider) => {
-            const saved = status?.media.find((item) => item.id === provider.id);
-            return <Card key={provider.id} icon={<Icon name="link" size={22} />} title={provider.name} configuredOnly connected={!!saved?.conectado}
-              description={provider.id === "replicate" ? "Nano Banana: gere imagens ou edite os anexos da conversa." : provider.id === "higgsfield" ? "Soul 2: gere imagens a partir de texto." : "Nano Banana 2: gere imagens a partir de texto."}>
-              <div className="node-fields">{fields([{ chave: provider.key, rotulo: `Chave de ${provider.name}`, tipo: "secret", definido: !!saved?.conectado, mascarado: saved?.mascarado || null,
-                ajuda: provider.id === "higgsfield" ? "Cole a credencial completa da API, incluindo ID:segredo quando fornecido." : "Cole a chave criada no painel do provedor." }])}</div>
-              <p>Salvar não gera imagens nem valida o saldo. As gerações são cobradas na sua conta do provedor.</p>
-              <div className="studio-actions">
-                <button className="studio-button primary" disabled={!!busy || !drafts[provider.key]?.trim()} onClick={() => save([provider.key])}>Salvar chave</button>
-                {saved?.conectado && <button className="studio-button subtle danger" disabled={!!busy} onClick={() => save([], { [provider.key]: null })}>Remover chave</button>}
-              </div>
-            </Card>;
-          })}
-        </div>
+        <p className="settings-credential-link">As contas de IA ficam em <a href="/credenciais">Credenciais</a>.</p>
         <div className="settings-section-heading"><Icon name="chat" size={18} /><div><h2>Canais e voz</h2><p>Configure uma vez e vincule ao fluxo em Implantar.</p></div></div>
         <div className="settings-channels">
           <Card

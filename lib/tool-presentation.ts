@@ -1,3 +1,4 @@
+import { AI_CREDENTIAL_CATALOG } from "./ai-providers";
 import { EMBEDDING_CREDENTIAL_CATALOG } from "./embedding-credentials";
 // Catálogo visível no editor. IDs antigos continuam executáveis para preservar fluxos salvos.
 export const AGENT_TOOL_CATALOG = [
@@ -25,7 +26,7 @@ export function toolTitle(tool: { name: string; label?: string; id?: string }) {
   return AGENT_TOOL_CATALOG.find((item) => item.id === (tool.id || `interno:${tool.name}`))?.name || tool.label || tool.name;
 }
 const DATABASE_CREDENTIAL_CATALOG = [{ id: "credential:knowledge_postgres", provider: "knowledge_postgres", name: "Postgres · Base de Conhecimento", icon: "/knowledge-icons/vectors-postgres.svg" }];
-export function toolIcon(id: string) { return [...AGENT_TOOL_CATALOG, ...EMBEDDING_CREDENTIAL_CATALOG, ...DATABASE_CREDENTIAL_CATALOG].find((item) => item.id === id)?.icon; }
+export function toolIcon(id: string) { if (id === "chatgpt") return "/knowledge-icons/embeddings-openai.svg"; return [...AGENT_TOOL_CATALOG, ...EMBEDDING_CREDENTIAL_CATALOG, ...DATABASE_CREDENTIAL_CATALOG, ...AI_CREDENTIAL_CATALOG].find((item) => item.id === id)?.icon; }
 
 // Uma credencial Brave atende à ferramenta HTTP e à versão MCP; Teams usa Microsoft.
 const CREDENTIAL_PROVIDERS: Record<string, string> = {
@@ -38,4 +39,4 @@ export const CREDENTIAL_TOOL_CATALOG = AGENT_TOOL_CATALOG.flatMap((tool) => {
   return provider ? [{ ...tool, provider }] : [];
 });
 
-export const CREDENTIAL_CATALOG = [...CREDENTIAL_TOOL_CATALOG, ...EMBEDDING_CREDENTIAL_CATALOG, ...DATABASE_CREDENTIAL_CATALOG].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+export const CREDENTIAL_CATALOG = [...CREDENTIAL_TOOL_CATALOG, ...EMBEDDING_CREDENTIAL_CATALOG, ...DATABASE_CREDENTIAL_CATALOG, ...AI_CREDENTIAL_CATALOG].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));

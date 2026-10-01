@@ -133,7 +133,7 @@ function AgentNodeView({ id, data, selected }: NodeProps<VisualNode>) {
                 onChange={(e) => setEditing(e.target.value)}
                 onBlur={finishRename}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") finishRename();
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); e.currentTarget.blur(); }
                   if (e.key === "Escape") setEditing(null);
                   e.stopPropagation();
                 }}

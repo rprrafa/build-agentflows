@@ -1,4 +1,5 @@
 "use client";
+import { OpenRouterConnect } from "./OpenRouterConnect";
 import { useState } from "react";
 import { TOOL_CREDENTIALS, TOOL_CREDENTIAL_LABELS } from "@/lib/tool-credentials";
 import type { SavedToolCredential } from "@/lib/tool-credential-store";
@@ -20,6 +21,7 @@ export function ToolCredentialDialog({ provider: initialProvider = "", credentia
     setBusy(true); setError("");
     try {
       const saved = await request<SavedToolCredential>(credential ? `/api/tool-credentials/${encodeURIComponent(credential.id)}` : "/api/tool-credentials", credential ? "PUT" : "POST", { name, provider, fields: draft });
+      window.dispatchEvent(new Event("credentials-changed"));
       onSaved(saved);
     } catch (e) { setError(e instanceof Error ? e.message : "Não foi possível salvar a conexão."); }
     finally { setBusy(false); }
@@ -40,6 +42,7 @@ export function ToolCredentialDialog({ provider: initialProvider = "", credentia
     <div className="node-fields">
       {!credential && !initialProvider ? <ToolSelect label="Serviço" value={tool} catalog={CREDENTIAL_CATALOG} disabled={busy} onChange={(id) => { setTool(id); setProvider(CREDENTIAL_CATALOG.find((item) => item.id === id)!.provider); setDraft({}); setError(""); }} /> : null}
       {!!provider && <>
+        {provider === "ai_openrouter" && !credential && <><OpenRouterConnect onSaved={onSaved} /><small>Ou salve uma chave de API abaixo.</small></>}
         <input aria-label="Nome da credencial" value={name} maxLength={100} placeholder="Nome da credencial" disabled={busy} onChange={(event) => setName(event.target.value)} />
         {fields.find((field) => field.link)?.link && <a className="credential-help" href={fields.find((field) => field.link)!.link} target="_blank" rel="noreferrer">Obter credencial {TOOL_CREDENTIAL_LABELS[provider]}</a>}
         {renderFields(false)}

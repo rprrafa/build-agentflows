@@ -1,4 +1,5 @@
 "use client";
+import { modelProviderId } from "@/lib/ai-providers";
 import { MEDIA_MODELS } from "@/lib/media-models";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { INITIAL_VOICE, VoiceSession, type VoiceState } from "@/lib/voice-session";
@@ -186,6 +187,7 @@ export function ChatPopup({
   const [sending, setSending] = useState(false);
   const [attachmentError, setAttachmentError] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [directModels, setDirectModels] = useState<ModelCapability[]>([]);
   const [routerModels, setRouterModels] = useState<ModelCapability[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -194,7 +196,7 @@ export function ChatPopup({
   const recordingAllowed = useRef(open);
   const dictationAbort = useRef<AbortController | null>(null);
   const hasImages = attachments.some((a) => a.kind === "image");
-  const issues = hasImages ? imageIssues(graph, [...chatModels, ...routerModels, ...MEDIA_MODELS]) : [];
+  const issues = hasImages ? imageIssues(graph, [...chatModels, ...routerModels, ...directModels, ...MEDIA_MODELS]) : [];
   const [voiceState, setVoiceState] = useState<VoiceState>({ ...INITIAL_VOICE });
   const conversation = useRef<VoiceSession | null>(null);
   const latest = useRef({ onSend, attachments, voiceId });
@@ -246,9 +248,11 @@ export function ChatPopup({
     void request<{ conectado: boolean; modelos: RouterModel[] }>("/api/conexoes/modelos").then((r) => {
       if (alive) setRouterModels(r.conectado ? r.modelos.map((m) => ({ id: `openrouter:${m.id}`, name: m.nome, inputModalities: m.inputModalities || ["text"] })) : []);
     }).catch(() => { if (alive) setRouterModels([]); });
+    const direct = graph.nodes.filter(n => ["llm", "agent"].includes(n.data.kind)).map(n => ({ provider: modelProviderId(n.data.config.model), credentialId: n.data.config.modelCredentialId || "" })).filter(p => ["openai", "google", "anthropic", "groq"].includes(p.provider));
+    void Promise.all(direct.map(p => request<{ models: ModelCapability[] }>(`/api/conexoes/provedores?${new URLSearchParams(p)}`).then(r => r.models).catch(() => []))).then(models => { if (alive) setDirectModels(models.flat()); });
     textarea.current?.focus();
     return () => { alive = false; };
-  }, [open]);
+  }, [open, graph]);
   useEffect(() => {
     recordingAllowed.current = open;
     if (!open) dictationAbort.current?.abort();

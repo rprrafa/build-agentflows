@@ -321,6 +321,7 @@ export function Modal({
     const el = ref.current;
     const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     el?.showModal();
+    el?.querySelector<HTMLElement>("[autofocus], [data-autofocus]")?.focus();
     return () => {
       el?.close();
       if (trigger?.isConnected) trigger.focus({ preventScroll: true });
