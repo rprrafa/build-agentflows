@@ -353,13 +353,9 @@ export function Modal({
 export function StudioShell({
   children,
   active,
-  onConnect,
-  connected,
 }: {
   children: ReactNode;
   active: "flows" | "runs" | "connections" | "knowledge" | "credentials";
-  onConnect: () => void;
-  connected?: boolean;
 }) {
   useDismissMenus();
   const router = useRouter();
@@ -427,13 +423,6 @@ export function StudioShell({
           </Link>
         </nav>
         <div className="studio-nav-bottom">
-          <button className="studio-account" onClick={onConnect}>
-            <span
-              className={"connection-dot " + (connected ? "connected" : "")}
-            />
-            <span>{connected ? "ChatGPT conectado" : "Conectar ChatGPT"}</span>
-            <Icon name="link" size={16} />
-          </button>
           <details className="canvas-menu studio-profile">
             <summary aria-label={userName ? `Conta de ${userName}` : "Minha conta"} title={userName || "Minha conta"}>
               <span className="studio-user-avatar">{initials || <Icon name="user" size={18} />}</span>

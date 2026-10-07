@@ -10,8 +10,6 @@ export function Credentials() {
   return (
     <StudioShell
       active="credentials"
-      connected={!!connection?.account}
-      onConnect={() => setConnect(true)}
     >
       <main className="library-page connections-page">
         <header className="library-header">

@@ -4,7 +4,6 @@ import type { Flow } from "@/lib/flow-types";
 import { Icon, StudioShell, request } from "./StudioUI";
 import { EmbedSecurity } from "./EmbedSecurity";
 import { WhatsAppTerms } from "./WhatsAppTerms";
-import { ChatGPTConnection, useChatGPT } from "./ChatGPTConnection";
 
 type CampoStatus = {
   chave: string;
@@ -101,10 +100,8 @@ function CopyButton({ text, label = "Copiar" }: { text: string; label?: string }
   );
 }
 export function Connections() {
-  const { connection, setConnection } = useChatGPT();
   const [status, setStatus] = useState<Status | null>(null);
   const [flows, setFlows] = useState<Flow[]>([]);
-  const [connect, setConnect] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
@@ -211,8 +208,6 @@ export function Connections() {
   return (
     <StudioShell
       active="connections"
-      onConnect={() => setConnect(true)}
-      connected={!!connection?.account}
     >
       <main className="library-page connections-page">
         <header className="library-header">
@@ -342,12 +337,6 @@ export function Connections() {
           <Icon name="check" size={17} />
           {notice}
         </div>
-      )}
-      {connect && (
-        <ChatGPTConnection
-          onClose={() => setConnect(false)}
-          onChange={setConnection}
-        />
       )}
     </StudioShell>
   );

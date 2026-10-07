@@ -13,7 +13,6 @@ import {
   type KnowledgeSource,
 } from "@/lib/knowledge-types";
 import { knowledgeLoader } from "@/lib/knowledge-catalog";
-import { ChatGPTConnection, useChatGPT } from "./ChatGPTConnection";
 import { Icon, IconButton, Modal, request, StudioShell } from "./StudioUI";
 import { KnowledgeSourceDialog } from "./KnowledgeSourceDialog";
 import { KnowledgeChunks } from "./KnowledgeChunks";
@@ -49,9 +48,7 @@ function Status({ base }: { base: KnowledgeBase }) {
 
 export function KnowledgeWorkspace({ id }: { id?: string }) {
   const router = useRouter();
-  const { connection, setConnection } = useChatGPT();
-  const [connect, setConnect] = useState(false),
-    [bases, setBases] = useState<KnowledgeBase[]>([]),
+  const [bases, setBases] = useState<KnowledgeBase[]>([]),
     [detail, setDetail] = useState<Detail | null>(null),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
@@ -208,8 +205,6 @@ export function KnowledgeWorkspace({ id }: { id?: string }) {
   return (
     <StudioShell
       active="knowledge"
-      connected={!!connection?.account}
-      onConnect={() => setConnect(true)}
     >
       <main className="library-page knowledge-page">
         <header className="library-header">
@@ -1024,12 +1019,6 @@ export function KnowledgeWorkspace({ id }: { id?: string }) {
             )}
           </div>
         </Modal>
-      )}
-      {connect && (
-        <ChatGPTConnection
-          onClose={() => setConnect(false)}
-          onChange={setConnection}
-        />
       )}
     </StudioShell>
   );

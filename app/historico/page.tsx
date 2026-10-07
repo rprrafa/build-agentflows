@@ -4,7 +4,6 @@ import type { Run, RunPage } from "@/lib/flow-types";
 import { isRunPage, parseRunPage } from "@/lib/run-page";
 import { Icon, Modal, StudioShell } from "@/components/StudioUI";
 import { RunView, RUN_STATUS } from "@/components/RunView";
-import { ChatGPTConnection, useChatGPT } from "@/components/ChatGPTConnection";
 export default function Page() {
   const [data, setData] = useState<RunPage | null>(null);
   // Fast Refresh can retain state from the previous, unpaginated version.
@@ -17,9 +16,7 @@ export default function Page() {
     [detailError, setDetailError] = useState("");
   const [loading, setLoading] = useState(true),
     [filter, setFilter] = useState("all"),
-    [connect, setConnect] = useState(false),
     [revision, setRevision] = useState(0);
-  const { connection, setConnection } = useChatGPT();
   useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -95,8 +92,6 @@ export default function Page() {
   return (
     <StudioShell
       active="runs"
-      onConnect={() => setConnect(true)}
-      connected={!!connection?.account}
     >
       <main className="library-page">
         <header className="library-header">
@@ -256,12 +251,6 @@ export default function Page() {
             </>
           )}
         </Modal>
-      )}
-      {connect && (
-        <ChatGPTConnection
-          onClose={() => setConnect(false)}
-          onChange={setConnection}
-        />
       )}
     </StudioShell>
   );

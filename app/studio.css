@@ -130,21 +130,6 @@
 .studio-nav-bottom {
   margin-top: auto;
 }
-.studio-account {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 13px 9px;
-  font-size: 11px;
-  border: 1px solid var(--studio-line);
-  border-radius: 9px;
-  background: var(--studio-bg);
-  text-align: left;
-}
-.studio-account svg {
-  margin-left: auto;
-}
 .connection-dot {
   width: 7px;
   height: 7px;
@@ -3849,7 +3834,6 @@
   .studio-version-badge { margin-left: 0; font-size: 8px; }
   .studio-nav-label { display: flex; margin: 0 0 0 auto; gap: 8px; }
   .studio-nav-bottom { display: block; margin: 0; }
-  .studio-nav-bottom .studio-account { display: none; }
   .studio-profile { margin: 0; }
   .studio-profile-name { max-width: 110px; }
   .studio-profile > .studio-profile-menu { top: calc(100% + 8px); bottom: auto; right: 0; left: auto; }

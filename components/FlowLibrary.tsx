@@ -156,8 +156,6 @@ export function FlowLibrary() {
   return (
     <StudioShell
       active="flows"
-      onConnect={() => setConnect(true)}
-      connected={!!connection?.account}
     >
       <main className="library-page">
         <header className="library-header">
