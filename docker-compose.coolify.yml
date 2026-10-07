@@ -69,7 +69,7 @@ services:
     mem_limit: 2048m
     cpus: 2
     pids_limit: 256
-    stop_grace_period: 60s
+    stop_grace_period: 210s
 
   postgres:
     image: postgres:17-alpine

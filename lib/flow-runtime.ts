@@ -191,7 +191,14 @@ export async function execute(r: Run, externalSignal?: AbortSignal): Promise<Run
   parentSignal?.addEventListener("abort", stopChild, { once: true });
   if (parentSignal?.aborted) controller.abort();
   activeRuns.set(runKey(r.id), controller);
-  const deadlineTimer = setTimeout(() => controller.abort(), Math.max(1, remaining));
+  let timedOut = false;
+  const deadlineTimer = setTimeout(() => { timedOut = true; controller.abort(); }, Math.max(1, remaining));
+  // Every abort reaches the same controller; the message must say why it stopped.
+  const interruption = () => timedOut || Date.now() >= deadline
+    ? "O tempo de trabalho atingiu o limite. Confira o que já foi realizado antes de iniciar outra tarefa."
+    : parentSignal?.aborted
+      ? "A execução foi interrompida pelo servidor, por exemplo durante uma atualização. Confira o que já foi realizado antes de tentar novamente."
+      : "A execução foi interrompida. Confira o que já foi realizado antes de tentar novamente.";
   // Persisted cancellation also works across web/worker processes.
   let checking = false;
   let cancellationCheck = Promise.resolve();
@@ -333,7 +340,7 @@ export async function execute(r: Run, externalSignal?: AbortSignal): Promise<Run
       }
       // A cancellation during a remote call never dispatches another block.
       if ((await getRun(r.id)).status === "cancelled") return await getRun(r.id);
-      if (controller.signal.aborted) throw new FlowError("O tempo de trabalho atingiu o limite.");
+      if (controller.signal.aborted) throw new FlowError(interruption());
       record(r, n, output, start, details);
       if (k === "agent" || k === "llm") {
         const updates: { key: string; value: string }[] = JSON.parse(c.stateUpdates || "[]");
@@ -350,7 +357,7 @@ export async function execute(r: Run, externalSignal?: AbortSignal): Promise<Run
     if ((await getRun(r.id)).status === "cancelled") return await getRun(r.id);
     for (const trace of r.trace) if (trace.status === "running") { trace.status = "failed"; trace.output = "A execução foi interrompida."; trace.ms = Date.now() - Date.parse(trace.at); }
     r.status = "failed";
-    r.error = controller.signal.aborted ? "O tempo de trabalho atingiu o limite. Confira o que já foi realizado antes de iniciar outra tarefa." :
+    r.error = controller.signal.aborted ? interruption() :
       err instanceof Error ? err.message : "Não foi possível executar o fluxo.";
   } finally {
     if (r.embedSessionId && r.status !== "running") await cancelCommands(r.id);

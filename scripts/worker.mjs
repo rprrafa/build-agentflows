@@ -10,10 +10,16 @@ import { nextJobNotification, closeQueue } from "../lib/saas-queue.ts";
 import { deliverAuthMail } from "../lib/saas-mail.ts";
 import { cleanupAuth } from "../lib/saas-auth.ts";
 
-const db = saasDatabase(), id = randomUUID(), stop = new AbortController();
+// A deploy stops claiming new jobs but lets active runs finish (runs last up to 180 s by default);
+// only after DRAIN_MS are they aborted. Keep stop_grace_period above DRAIN_MS + EXIT_MARGIN_MS.
+const DRAIN_MS = 185000, EXIT_MARGIN_MS = 10000;
+const db = saasDatabase(), id = randomUUID(), stop = new AbortController(), drain = new AbortController();
 const active = new Set();
 let mail = Promise.resolve(), sendingMail = false, lastMaintenance = 0;
-for (const signal of ["SIGTERM", "SIGINT"]) process.once(signal, () => stop.abort());
+for (const signal of ["SIGTERM", "SIGINT"]) process.once(signal, () => {
+  stop.abort();
+  setTimeout(() => drain.abort(), DRAIN_MS).unref();
+});
 await migrateDatabase(db);
 writeFileSync(path.join(tmpdir(), "agentflows-worker-id"), id, { mode: 0o600 });
 try {
@@ -34,7 +40,7 @@ try {
       if (active.size < 2) {
         const job = await claimJob(db, await nextJobNotification() || undefined);
         if (job) {
-          const work = runClaimedJob(db, job, stop.signal).catch(() => console.error("Falha ao finalizar job; a recuperação verificará a autorização expirada."))
+          const work = runClaimedJob(db, job, drain.signal).catch(() => console.error("Falha ao finalizar job; a recuperação verificará a autorização expirada."))
             .finally(() => active.delete(work));
           active.add(work);
         }
@@ -43,7 +49,7 @@ try {
     await new Promise((resolve) => { const timer = setTimeout(done, 1000); function done() { clearTimeout(timer); stop.signal.removeEventListener("abort", done); resolve(); } stop.signal.addEventListener("abort", done, { once: true }); if (stop.signal.aborted) done(); });
   }
 } finally {
-  const deadline = setTimeout(() => process.exit(1), 55000); deadline.unref();
+  const deadline = setTimeout(() => process.exit(1), DRAIN_MS + EXIT_MARGIN_MS); deadline.unref();
   await Promise.allSettled([...active, mail]);
   await db.query("DELETE FROM worker_heartbeats WHERE id=$1", [id]);
   closeQueue(); await db.close(); clearTimeout(deadline);
