@@ -48,6 +48,12 @@ Resend usa uma outbox persistida com retentativas e chave de idempotência.
 Uma conta só acessa recursos após confirmar o e-mail e obter aprovação ou
 resgatar um convite válido. Convites limitam usos atomicamente e mantêm auditoria
 por usuário. Suspensão revoga acesso também para jobs já enfileirados.
+Um link com `?invite=<código>` em qualquer página guarda o código num cookie
+HttpOnly de 24 horas (`agentflows_invite`) e o mantém nos redirecionamentos e
+links de entrada/cadastro. Ao chegar em `/acesso` com o e-mail confirmado e a
+conta na lista de espera, o convite é resgatado sem outro clique. O cookie é
+descartado após o resgate, quando o convite é recusado de forma definitiva e
+no logout; continua enquanto falta confirmar o e-mail.
 
 APIs validam sessão, origem, tamanho do corpo e limites persistidos; respostas
 privadas não são armazenadas em cache. O proxy é uma camada adicional, e as

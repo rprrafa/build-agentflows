@@ -12,12 +12,17 @@ function nextDestination() {
   const next = new URLSearchParams(window.location.search).get("next") || "/";
   return next.startsWith("/") && !next.startsWith("//") && !next.includes("\\") ? next : "/";
 }
+// Same rules as the server (inviteCode); the proxy also keeps it in a private cookie.
+function inviteFromUrl() {
+  const code = (new URLSearchParams(window.location.search).get("invite") || "").trim();
+  return code.length >= 8 && code.length <= 128 && /^[\x21-\x7e]+$/.test(code) ? code : "";
+}
 async function request(action: string, data?: Record<string, unknown>) {
   const response = await fetch(`/api/auth/${action}`, { method: data ? "POST" : "GET", cache: "no-store",
     headers: data ? { "Content-Type": "application/json" } : undefined, body: data ? JSON.stringify(data) : undefined });
   const result = await readJson(response);
   if (!response.ok || result === undefined) throw new Error(result?.error || (response.status >= 500 ? unavailableMessage(response.status) : "Não foi possível concluir. Tente novamente."));
-  return result as { user: User; message?: string };
+  return result as { user: User; message?: string; invitePending?: boolean };
 }
 function GoogleIcon() {
   return <svg aria-hidden="true" width="18" height="18" viewBox="0 0 48 48" className="shrink-0">
@@ -41,28 +46,43 @@ export function AccountScreen({ mode, google = false }: { mode: Mode; google?: b
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [done, setDone] = useState(false);
+  const [invite, setInvite] = useState("");
+  const [redeeming, setRedeeming] = useState(false);
+  const [invitePending, setInvitePending] = useState(false);
+  const withInvite = (path: string) => invite ? `${path}?invite=${encodeURIComponent(invite)}` : path;
   useEffect(() => {
     let live = true;
     async function initialize() {
       // Defer browser URL access until hydration. Never consume a token on a GET or preview.
       await Promise.resolve();
       if (!live) return;
+      const linked = inviteFromUrl();
+      setInvite(linked);
       if (mode === "verify-email" || mode === "reset-password") {
         const value = new URLSearchParams(window.location.hash.slice(1)).get("token") || "";
         setToken(value);
-        window.history.replaceState(null, "", window.location.pathname);
+        window.history.replaceState(null, "", window.location.pathname + (linked ? `?invite=${encodeURIComponent(linked)}` : ""));
       }
       if (mode === "login" && new URLSearchParams(window.location.search).get("erro") === "google") setError("Não foi possível entrar com Google. Tente novamente ou entre com sua senha.");
       if (mode === "access") {
         try {
           const data = await request("session");
-          if (live) { setUser(data.user); setLoaded(true); }
+          if (!live) return;
+          setUser(data.user); setCode(linked); setInvitePending(!!(linked || data.invitePending)); setLoaded(true);
+          // A confirmed account waiting for release uses the invite link without another click.
+          if (data.user?.email_verified_at && data.user.beta_status === "pending" && (linked || data.invitePending)) {
+            setRedeeming(true);
+            try {
+              await request("invite", linked ? { code: linked } : {});
+              if (live) { router.replace("/"); router.refresh(); }
+            } catch (e) { if (live) { setError((e as Error).message); setRedeeming(false); setInvitePending(false); } }
+          }
         } catch (e) { if (live) { setError((e as Error).message); setLoaded(true); } }
       }
     }
     void initialize();
     return () => { live = false; };
-  }, [mode]);
+  }, [mode, router]);
   async function act(action: () => Promise<void>) {
     if (busy) return;
     setBusy(true); setError(""); setMessage("");
@@ -76,7 +96,7 @@ export function AccountScreen({ mode, google = false }: { mode: Mode; google?: b
       const action = mode === "access" ? "invite" : mode;
       const result = await request(action, { name, email, password, confirmPassword, token, code });
       if (mode === "login") {
-        router.replace(result.user.email_verified_at && result.user.beta_status === "approved" ? nextDestination() : "/acesso");
+        router.replace(result.user.email_verified_at && result.user.beta_status === "approved" ? nextDestination() : withInvite("/acesso"));
         router.refresh();
       } else if (mode === "access") { router.replace("/"); router.refresh(); }
       else {
@@ -97,15 +117,16 @@ export function AccountScreen({ mode, google = false }: { mode: Mode; google?: b
         {error && <p role="alert" className="mb-4 text-sm text-danger">{error}</p>}
         {message && <p role="status" className="mb-4 text-sm">{message}</p>}
         {mode === "access" ? <>
-          {!loaded ? <p role="status">Consultando seu acesso…</p> : !user ? <p><Link href="/entrar">Entre na sua conta</Link> para acompanhar sua liberação.</p> : <>
+          {!loaded ? <p role="status">Consultando seu acesso…</p> : !user ? <p><Link href={withInvite("/entrar")}>Entre na sua conta</Link> para acompanhar sua liberação.</p> : <>
             <div className="flex items-center gap-3 rounded-field border border-line bg-surface-2 px-4 py-3 mb-5">
               <span aria-hidden="true" className="w-9 h-9 shrink-0 rounded-full bg-accent-soft text-accent-ink grid place-items-center font-bold">{user.name.trim().charAt(0).toUpperCase() || "?"}</span>
               <span className="min-w-0 flex-1"><strong className="block text-sm truncate">{user.name}</strong><span className="block text-xs text-muted truncate">{user.email}</span></span>
               <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${user.beta_status === "blocked" ? "bg-danger/10 text-danger" : !user.email_verified_at ? "bg-warn/10 text-warn" : user.beta_status === "approved" ? "bg-ok/10 text-ok" : "bg-accent-soft text-accent-ink"}`}>{user.beta_status === "blocked" ? "Suspenso" : !user.email_verified_at ? "E-mail pendente" : user.beta_status === "approved" ? "Liberado" : "Lista de espera"}</span>
             </div>
             {user.beta_status === "blocked" ? <p role="status" className="text-sm">Seu acesso está suspenso. Entre em contato com a equipe do beta.</p>
-              : !user.email_verified_at ? <><p className="text-sm mb-4">Confirme o link enviado para <strong>{user.email}</strong> antes de utilizar seu convite.</p><button className="btn-primary" disabled={busy} onClick={() => void act(async () => { const result = await request("resend-verification", { email: user.email }); setMessage(result.message || ""); })}>Reenviar confirmação</button></>
+              : !user.email_verified_at ? <><p className="text-sm mb-4">Confirme o link enviado para <strong>{user.email}</strong> antes de utilizar seu convite.{invitePending && " Seu convite fica guardado e será aplicado quando você voltar a esta página com o e-mail confirmado."}</p><button className="btn-primary" disabled={busy} onClick={() => void act(async () => { const result = await request("resend-verification", { email: user.email }); setMessage(result.message || ""); })}>Reenviar confirmação</button></>
               : user.beta_status === "approved" ? <Link className="btn-primary" href="/">Abrir meu espaço</Link>
+              : redeeming ? <p role="status" className="text-sm">Validando seu convite…</p>
               : <><form onSubmit={submit}>
                   <label htmlFor="invite-code" className="block text-sm font-semibold mb-1">Tem um código de convite?</label>
                   <p id="invite-help" className="text-xs text-muted mb-2">Informe o código para liberar seu acesso na hora.</p>
@@ -125,19 +146,19 @@ export function AccountScreen({ mode, google = false }: { mode: Mode; google?: b
           {mode === "register" && <label className="block text-sm" htmlFor="name">Seu nome<input id="name" className="input mt-1" value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} autoComplete="name" /></label>}
           {emailField && <label className="block text-sm" htmlFor="email">E-mail<input id="email" className="input mt-1" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required maxLength={254} autoComplete="email" /></label>}
           {passwordField && <label className="block text-sm" htmlFor="password">Senha<input id="password" className="input mt-1" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required maxLength={256} autoComplete={mode === "login" ? "current-password" : "new-password"} />{mode !== "login" && <span className="text-muted text-xs block mt-1">{REGRA_SENHA}</span>}</label>}
-          {mode === "login" && <p className="-mt-2 text-right"><Link href="/recuperar-senha" className="btn-link text-xs">Esqueci minha senha</Link></p>}
+          {mode === "login" && <p className="-mt-2 text-right"><Link href={withInvite("/recuperar-senha")} className="btn-link text-xs">Esqueci minha senha</Link></p>}
           {(mode === "register" || mode === "reset-password") && <label className="block text-sm" htmlFor="confirm-password">Confirmar senha<input id="confirm-password" className="input mt-1" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required maxLength={256} autoComplete="new-password" /></label>}
           {(mode === "verify-email" || mode === "reset-password") && !token && <p className="text-sm">Abra o link recebido por e-mail para continuar.</p>}
           <button className="btn-primary" disabled={busy || ((mode === "verify-email" || mode === "reset-password") && !token)}>{busy ? "Aguarde…" : titles[mode]}</button>
           </form>
         </>}
         {(mode !== "access" || user) && <nav aria-label="Opções de acesso" className="flex gap-x-4 gap-y-2 flex-wrap justify-center mt-6 pt-5 border-t border-line text-sm text-muted">
-          {mode === "login" && <span>Não tem conta? <Link href="/conta" className="btn-link">Criar conta</Link></span>}
-          {mode === "register" && <span>Já tem conta? <Link href="/entrar" className="btn-link">Entrar</Link></span>}
-          {mode !== "login" && mode !== "register" && mode !== "access" && <Link href="/entrar" className="btn-link">Entrar</Link>}
-          {mode === "verify-email" && <Link href="/acesso" className="btn-link">Reenviar confirmação</Link>}
-          {mode === "reset-password" && <Link href="/recuperar-senha" className="btn-link">Pedir novo link</Link>}
-          {mode === "access" && user && <span>Não é você? <button type="button" className="btn-link" disabled={busy} onClick={() => void act(async () => { await request("logout", {}); router.replace("/entrar"); router.refresh(); })}>Sair da conta</button></span>}
+          {mode === "login" && <span>Não tem conta? <Link href={withInvite("/conta")} className="btn-link">Criar conta</Link></span>}
+          {mode === "register" && <span>Já tem conta? <Link href={withInvite("/entrar")} className="btn-link">Entrar</Link></span>}
+          {mode !== "login" && mode !== "register" && mode !== "access" && <Link href={withInvite("/entrar")} className="btn-link">Entrar</Link>}
+          {mode === "verify-email" && <Link href={withInvite("/acesso")} className="btn-link">Reenviar confirmação</Link>}
+          {mode === "reset-password" && <Link href={withInvite("/recuperar-senha")} className="btn-link">Pedir novo link</Link>}
+          {mode === "access" && user && <span>Não é você? <button type="button" className="btn-link" disabled={busy} onClick={() => void act(async () => { await request("logout", {}); router.replace(withInvite("/entrar")); router.refresh(); })}>Sair da conta</button></span>}
         </nav>}
       </section>
     </div>

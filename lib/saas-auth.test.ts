@@ -133,6 +133,35 @@ test("resgates de contas concorrentes não ultrapassam limite; conta não verifi
   assert.equal((await db.query("SELECT uses FROM invites")).rows[0].uses, 1);
 });
 
+test("link de convite fica no cookie até a conta confirmada usá-lo; esgotado limpa e logout descarta", async () => {
+  await invite("link-invite-1", 1);
+  const pending = await register("link@example.com");
+  const call = (action: string, token: string, cookie = "", body?: unknown) => authAction(db, new Request(`https://app.example.com/api/auth/${action}`, {
+    method: body === undefined ? "GET" : "POST",
+    headers: { cookie: `agentflows_session=${token}${cookie ? `; ${cookie}` : ""}`, origin: "https://app.example.com", "content-type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  }), action);
+  const cookie = "agentflows_invite=link-invite-1";
+  assert.equal((await (await call("session", pending.token, cookie)).json()).invitePending, true);
+  assert.equal((await (await call("session", pending.token)).json()).invitePending, false);
+  // Not confirmed yet: the invite is neither consumed nor discarded.
+  const early = await call("invite", pending.token, cookie, {});
+  assert.equal(early.status, 403);
+  assert.equal(early.headers.get("set-cookie"), null);
+  assert.equal((await db.query("SELECT uses FROM invites")).rows[0].uses, 0);
+  await consumeActionToken(db, await actionToken("link@example.com"), "verify_email");
+  const redeemed = await call("invite", pending.token, cookie, {});
+  assert.equal(redeemed.status, 200);
+  assert.match(redeemed.headers.get("set-cookie")!, /^agentflows_invite=; .*Max-Age=0/);
+  requireBetaAccess(await findSession(db, pending.token));
+  const other = await verified("other-link@example.com");
+  const exhausted = await call("invite", other.token, cookie, {});
+  assert.equal(exhausted.status, 400);
+  assert.match(exhausted.headers.get("set-cookie")!, /^agentflows_invite=; .*Max-Age=0/);
+  const logout = await call("logout", other.token, cookie, {});
+  assert.ok(logout.headers.getSetCookie().some((value) => /^agentflows_invite=; .*Max-Age=0/.test(value)));
+});
+
 test("recuperação não revela conta inexistente, invalida sessões e exige token válido", async () => {
   const a = await verified("recover@example.com");
   await requestActionMail(db, "missing@example.com", "reset_password", "ip");

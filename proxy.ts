@@ -5,7 +5,7 @@ import { effectiveEmbedOrigins } from "@/lib/embed-security";
 import { embedSettings, hasEmbedKey } from "@/lib/embed-store";
 import { findSession } from "@/lib/saas-auth";
 import { saasDatabase } from "@/lib/saas-db";
-import { sessionToken } from "@/lib/saas-http";
+import { inviteCode, inviteCookie, sessionToken } from "@/lib/saas-http";
 
 function rotaPublica(pathname: string, metodo: string): boolean {
   // Embed APIs authenticate signed, scoped tickets; no admin cookie crosses origins.
@@ -22,6 +22,11 @@ function rotaPublica(pathname: string, metodo: string): boolean {
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const invite = inviteCode(request.nextUrl.searchParams.get("invite"));
+  const withInvite = <T extends NextResponse>(response: T) => {
+    if (invite) response.headers.append("Set-Cookie", inviteCookie(invite));
+    return response;
+  };
 
   async function permitir() {
     const response = NextResponse.next();
@@ -35,14 +40,17 @@ export async function proxy(request: NextRequest) {
   }
 
   const publicAuth = ["/entrar", "/conta", "/acesso", "/verificar-email", "/recuperar-senha", "/redefinir-senha"];
-  if (publicAuth.includes(pathname) || pathname.startsWith("/api/auth/") || pathname.startsWith("/_next/") || pathname === "/icon.svg" || pathname === "/api/health") return permitir();
+  if (publicAuth.includes(pathname)) return withInvite(await permitir());
+  if (pathname.startsWith("/api/auth/") || pathname.startsWith("/_next/") || pathname === "/icon.svg" || pathname === "/api/health") return permitir();
   // Public integrations keep their own token/owner validation in their handlers.
   if (rotaPublica(pathname, request.method)) return permitir();
   try {
     const user = await findSession(saasDatabase(), sessionToken(request));
     if (user?.email_verified_at && user.beta_status === "approved") return permitir();
     if (pathname.startsWith("/api/") || pathname === "/mcp") return NextResponse.json({ error: user ? "Acesso ao beta pendente ou suspenso." : "Entre na sua conta." }, { status: user ? 403 : 401 });
-    return NextResponse.redirect(new URL(user ? "/acesso" : "/entrar", request.url));
+    const destination = new URL(user ? "/acesso" : "/entrar", request.url);
+    if (invite) destination.searchParams.set("invite", invite);
+    return withInvite(NextResponse.redirect(destination));
   } catch { return NextResponse.json({ error: "Serviço temporariamente indisponível." }, { status: 503 }); }
 }
 

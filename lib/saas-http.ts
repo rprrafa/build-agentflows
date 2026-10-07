@@ -12,6 +12,20 @@ export function sessionToken(req: Request) {
 export function sessionCookie(token: string, clear = false) {
   return `${SAAS_SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${clear ? 0 : SESSION_SECONDS}${appOrigin().startsWith("https:") ? "; Secure" : ""}`;
 }
+// An invite link (?invite=) survives sign-up, sign-in, Google and e-mail confirmation in this browser.
+export const INVITE_COOKIE = "agentflows_invite";
+const INVITE_SECONDS = 24 * 60 * 60;
+export function inviteCode(value: unknown) {
+  const code = typeof value === "string" ? value.trim() : "";
+  return code.length >= 8 && code.length <= 128 && /^[\x21-\x7e]+$/.test(code) ? code : undefined;
+}
+export function inviteFromRequest(req: Request) {
+  const raw = req.headers.get("cookie")?.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${INVITE_COOKIE}=`))?.slice(INVITE_COOKIE.length + 1);
+  try { return raw ? inviteCode(decodeURIComponent(raw)) : undefined; } catch { return undefined; }
+}
+export function inviteCookie(code: string, clear = false) {
+  return `${INVITE_COOKIE}=${clear ? "" : encodeURIComponent(code)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${clear ? 0 : INVITE_SECONDS}${appOrigin().startsWith("https:") ? "; Secure" : ""}`;
+}
 export function assertSameOrigin(req: Request) {
   if (req.headers.get("origin") !== appOrigin()) throw new AuthError("Origem da requisição inválida.", 403);
   if (req.headers.get("sec-fetch-site") === "cross-site") throw new AuthError("Origem da requisição inválida.", 403);
@@ -56,7 +70,7 @@ export function httpError(error: unknown) {
 export async function authAction(db: Database, req: Request, action: string) {
   try {
     if (action === "session" && req.method === "GET") {
-      return privateJson({ user: await findSession(db, sessionToken(req)) });
+      return privateJson({ user: await findSession(db, sessionToken(req)), invitePending: !!inviteFromRequest(req) });
     }
     if (req.method !== "POST") return privateJson({ error: "Método não permitido." }, { status: 405, headers: { Allow: "POST" } });
     assertSameOrigin(req);
@@ -64,7 +78,10 @@ export async function authAction(db: Database, req: Request, action: string) {
     await consumeRateLimit(db, `auth:ip:${client}`, 60, 60);
     if (action === "logout") {
       await revokeSession(db, sessionToken(req));
-      return privateJson({ ok: true }, { headers: { "Set-Cookie": sessionCookie("", true) } });
+      // Another account signing in on this browser must not inherit the pending invite.
+      const headers = new Headers({ "Set-Cookie": sessionCookie("", true) });
+      headers.append("Set-Cookie", inviteCookie("", true));
+      return privateJson({ ok: true }, { headers });
     }
     const data = await limitedJson(req);
     if (action === "register") {
@@ -88,8 +105,17 @@ export async function authAction(db: Database, req: Request, action: string) {
     if (action === "invite") {
       const user = await findSession(db, sessionToken(req));
       if (!user) throw new AuthError("Entre na sua conta.", 401);
-      await redeemInvite(db, user.id, data.code);
-      return privateJson({ ok: true });
+      const typed = typeof data.code === "string" && data.code.trim() ? data.code : undefined;
+      const clear = { "Set-Cookie": inviteCookie("", true) };
+      try { await redeemInvite(db, user.id, typed ?? inviteFromRequest(req)); }
+      catch (error) {
+        // Keep the invite while the account still needs confirmation or the limit is temporary.
+        const settled = error instanceof AuthError && !(error instanceof RateLimitError) && !/Confirme/.test(error.message);
+        const response = httpError(error);
+        if (settled) response.headers.append("Set-Cookie", clear["Set-Cookie"]);
+        return response;
+      }
+      return privateJson({ ok: true }, { headers: clear });
     }
     return privateJson({ error: "Ação não encontrada." }, { status: 404 });
   } catch (error) { return httpError(error); }
