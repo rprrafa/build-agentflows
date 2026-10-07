@@ -91,8 +91,8 @@ export function AccountScreen({ mode, google = false }: { mode: Mode; google?: b
     <div className="w-full max-w-[440px]">
       <div className="flex items-center gap-2.5 justify-center mb-6"><span className="w-8 h-8 rounded-[8px] bg-accent text-white grid place-items-center font-extrabold">B</span><strong>Build Agentflows</strong></div>
       <section className="card p-7 max-md:p-6">
-        <h1 className="text-[22px] font-extrabold mb-2">{titles[mode]}</h1>
-        <p className="text-muted text-sm mb-5">{mode === "register" ? "Crie sua conta e confirme seu e-mail. O beta exige um convite ou a liberação da equipe." : mode === "access" ? "Seus fluxos, conexões e bases de conhecimento ficam no seu espaço." : "Acesse seu espaço de agentes."}</p>
+        <h1 className="text-[22px] font-extrabold mb-2 text-center">{titles[mode]}</h1>
+        <p className="text-muted text-sm mb-5 text-center">{mode === "register" ? "Crie sua conta e confirme seu e-mail. O beta exige um convite ou a liberação da equipe." : mode === "access" ? "Seus fluxos, conexões e bases de conhecimento ficam no seu espaço." : "Acesse seu espaço de agentes."}</p>
         {error && <p role="alert" className="mb-4 text-sm text-danger">{error}</p>}
         {message && <p role="status" className="mb-4 text-sm">{message}</p>}
         {mode === "access" ? <>
@@ -123,7 +123,8 @@ export function AccountScreen({ mode, google = false }: { mode: Mode; google?: b
           <form onSubmit={submit} className="space-y-4">
           {mode === "register" && <label className="block text-sm" htmlFor="name">Seu nome<input id="name" className="input mt-1" value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} autoComplete="name" /></label>}
           {emailField && <label className="block text-sm" htmlFor="email">E-mail<input id="email" className="input mt-1" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required maxLength={254} autoComplete="email" /></label>}
-          {passwordField && <label className="block text-sm" htmlFor="password"><span className="flex items-center justify-between">Senha{mode === "login" && <Link href="/recuperar-senha" className="btn-link text-xs">Esqueci minha senha</Link>}</span><input id="password" className="input mt-1" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required maxLength={256} autoComplete={mode === "login" ? "current-password" : "new-password"} />{mode !== "login" && <span className="text-muted text-xs block mt-1">{REGRA_SENHA}</span>}</label>}
+          {passwordField && <label className="block text-sm" htmlFor="password">Senha<input id="password" className="input mt-1" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required maxLength={256} autoComplete={mode === "login" ? "current-password" : "new-password"} />{mode !== "login" && <span className="text-muted text-xs block mt-1">{REGRA_SENHA}</span>}</label>}
+          {mode === "login" && <p className="-mt-2 text-right"><Link href="/recuperar-senha" className="btn-link text-xs">Esqueci minha senha</Link></p>}
           {(mode === "register" || mode === "reset-password") && <label className="block text-sm" htmlFor="confirm-password">Confirmar senha<input id="confirm-password" className="input mt-1" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required maxLength={256} autoComplete="new-password" /></label>}
           {(mode === "verify-email" || mode === "reset-password") && !token && <p className="text-sm">Abra o link recebido por e-mail para continuar.</p>}
           <button className="btn-primary" disabled={busy || ((mode === "verify-email" || mode === "reset-password") && !token)}>{busy ? "Aguarde…" : titles[mode]}</button>

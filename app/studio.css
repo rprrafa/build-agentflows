@@ -3882,6 +3882,7 @@
 .provider-picker .tool-select-options { max-height: 280px; }
 .provider-picker .tool-select-options button span { white-space: normal; overflow-wrap: anywhere; }
 .credential-chatgpt { margin-bottom: 24px; }
+.credential-chatgpt .credential-manager-row { border-top: 0; }
 .credential-chatgpt .settings-usage { padding: 0 20px 16px; }
 .settings-credential-link { margin-bottom: 24px; }
 @media (max-width: 600px) { .credential-chatgpt .credential-manager-row { flex-wrap: wrap; } }
