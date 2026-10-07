@@ -30,7 +30,7 @@ export function Credentials() {
             </div>
             <button type="button" className="studio-button" onClick={() => setConnect(true)}>{connection?.account ? "Gerenciar conexão" : "Conectar ChatGPT"}</button>
           </div>
-          {connection?.account && <details className="settings-usage"><summary>Ver limites da assinatura</summary><ChatGPTUsage /></details>}
+          {connection?.account && <ChatGPTUsage />}
         </section>
         <ToolCredentialsManager />
       </main>

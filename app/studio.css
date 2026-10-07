@@ -3472,12 +3472,6 @@
 .connection-state i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .connection-account { display: grid; gap: 3px; padding: 12px; border-radius: 9px; background: var(--studio-bg); overflow-wrap: anywhere; }
 .connection-account span { color: var(--studio-muted); font-size: 11px; }
-.settings-usage { border-top: 1px solid var(--studio-line); padding-top: 12px; }
-.settings-usage > summary { display: flex; justify-content: space-between; align-items: center; cursor: pointer; color: var(--studio-muted); font-size: 12px; list-style: none; }
-.settings-usage > summary::-webkit-details-marker { display: none; }
-.settings-usage[open] > summary { color: var(--studio-primary); }
-.settings-usage[open] > summary svg { transform: rotate(90deg); }
-.settings-usage .chatgpt-usage { border-top: 0; }
 .settings-channels { display: grid; gap: 12px; }
 .channel-card { padding: 18px 20px; }
 .channel-card > header { grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; }
@@ -3867,6 +3861,6 @@
 .provider-picker .tool-select-options button span { white-space: normal; overflow-wrap: anywhere; }
 .credential-chatgpt { margin-bottom: 24px; }
 .credential-chatgpt .credential-manager-row { border-top: 0; }
-.credential-chatgpt .settings-usage { padding: 0 20px 16px; }
+.credential-chatgpt .chatgpt-usage { border-top: 0; padding-top: 4px; }
 .settings-credential-link { margin-bottom: 24px; }
 @media (max-width: 600px) { .credential-chatgpt .credential-manager-row { flex-wrap: wrap; } }
