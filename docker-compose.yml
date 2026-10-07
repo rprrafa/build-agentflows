@@ -12,10 +12,12 @@ services:
     extends:
       file: docker-compose.coolify.yml
       service: postgres
+    ports: ["127.0.0.1:${POSTGRES_PORT:-5436}:5432"]
   redis:
     extends:
       file: docker-compose.coolify.yml
       service: redis
+    ports: ["127.0.0.1:${REDIS_PORT:-6389}:6379"]
 volumes:
   dados:
   postgres-dados:
