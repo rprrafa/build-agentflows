@@ -299,9 +299,18 @@ export async function request<T>(
       body !== undefined ? { "Content-Type": "application/json" } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.error || "Não foi possível concluir.");
-  return data;
+  const data = await readJson(r);
+  if (!r.ok) throw new Error(data?.error || unavailableMessage(r.status));
+  if (data === undefined) throw new Error(unavailableMessage(r.status));
+  return data as T;
+}
+// Proxies and gateways answer with plain text ("no available server") when the app is down.
+export async function readJson(r: Response): Promise<{ error?: string } | undefined> {
+  const text = await r.text();
+  try { return text ? JSON.parse(text) : undefined; } catch { return undefined; }
+}
+export function unavailableMessage(status: number) {
+  return status >= 500 || status === 0 ? "O servidor está indisponível no momento. Tente novamente em instantes." : "Não foi possível concluir.";
 }
 export function Modal({
   title,

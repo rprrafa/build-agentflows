@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { REGRA_SENHA } from "@/lib/conta-comum";
+import { readJson, unavailableMessage } from "./StudioUI";
 
 type Mode = "login" | "register" | "forgot-password" | "verify-email" | "reset-password" | "access";
 type User = { name: string; email: string; email_verified_at: string | null; beta_status: "pending" | "approved" | "blocked" };
@@ -14,9 +15,9 @@ function nextDestination() {
 async function request(action: string, data?: Record<string, unknown>) {
   const response = await fetch(`/api/auth/${action}`, { method: data ? "POST" : "GET", cache: "no-store",
     headers: data ? { "Content-Type": "application/json" } : undefined, body: data ? JSON.stringify(data) : undefined });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || "Não foi possível concluir. Tente novamente.");
-  return result;
+  const result = await readJson(response);
+  if (!response.ok || result === undefined) throw new Error(result?.error || (response.status >= 500 ? unavailableMessage(response.status) : "Não foi possível concluir. Tente novamente."));
+  return result as { user: User; message?: string };
 }
 function GoogleIcon() {
   return <svg aria-hidden="true" width="18" height="18" viewBox="0 0 48 48" className="shrink-0">
@@ -103,7 +104,7 @@ export function AccountScreen({ mode, google = false }: { mode: Mode; google?: b
               <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${user.beta_status === "blocked" ? "bg-danger/10 text-danger" : !user.email_verified_at ? "bg-warn/10 text-warn" : user.beta_status === "approved" ? "bg-ok/10 text-ok" : "bg-accent-soft text-accent-ink"}`}>{user.beta_status === "blocked" ? "Suspenso" : !user.email_verified_at ? "E-mail pendente" : user.beta_status === "approved" ? "Liberado" : "Lista de espera"}</span>
             </div>
             {user.beta_status === "blocked" ? <p role="status" className="text-sm">Seu acesso está suspenso. Entre em contato com a equipe do beta.</p>
-              : !user.email_verified_at ? <><p className="text-sm mb-4">Confirme o link enviado para <strong>{user.email}</strong> antes de utilizar seu convite.</p><button className="btn-primary" disabled={busy} onClick={() => void act(async () => { const result = await request("resend-verification", { email: user.email }); setMessage(result.message); })}>Reenviar confirmação</button></>
+              : !user.email_verified_at ? <><p className="text-sm mb-4">Confirme o link enviado para <strong>{user.email}</strong> antes de utilizar seu convite.</p><button className="btn-primary" disabled={busy} onClick={() => void act(async () => { const result = await request("resend-verification", { email: user.email }); setMessage(result.message || ""); })}>Reenviar confirmação</button></>
               : user.beta_status === "approved" ? <Link className="btn-primary" href="/">Abrir meu espaço</Link>
               : <><form onSubmit={submit}>
                   <label htmlFor="invite-code" className="block text-sm font-semibold mb-1">Tem um código de convite?</label>
