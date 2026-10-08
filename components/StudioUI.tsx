@@ -396,13 +396,11 @@ export function StudioShell({
     <div className="studio-shell">
       <aside className="studio-nav">
         <div className="studio-brand-group">
-        <Link href="/" className="studio-brand">
-          <span className="brand-mark">
-            <Icon name="flows" size={23} />
-          </span>
-          <span>
-            Build<span className="brand-light"> Agentflows</span>
-          </span>
+        <Link href="/" className="studio-brand" aria-label="Agentflows, página inicial">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="brand-logo" src="/brand/agentflows-logo.png" alt="" width={138} height={30} />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="brand-icon" src="/brand/agentflows-icon.png" alt="" width={32} height={32} />
         </Link>
         <span className="studio-version-badge">{version}-beta</span>
         </div>

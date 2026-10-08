@@ -110,7 +110,10 @@ export function AccountScreen({ mode, google = false }: { mode: Mode; google?: b
   const social = google && (mode === "login" || mode === "register");
   return <main className="min-h-screen bg-bg flex items-center justify-center px-4 py-10">
     <div className="w-full max-w-[440px]">
-      <div className="flex items-center gap-2.5 justify-center mb-6"><span className="w-8 h-8 rounded-[8px] bg-accent text-white grid place-items-center font-extrabold">B</span><strong>Build Agentflows</strong></div>
+      <div className="flex justify-center mb-6">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/agentflows-logo.png" alt="Agentflows" width={184} height={40} className="h-10 w-auto" />
+      </div>
       <section className="card p-7 max-md:p-6">
         <h1 className="text-[22px] font-extrabold mb-2 text-center">{titles[mode]}</h1>
         <p className="text-muted text-sm mb-5 text-center">{mode === "register" ? "Crie sua conta e confirme seu e-mail. O beta exige um convite ou a liberação da equipe." : mode === "access" ? "Seus fluxos, conexões e bases de conhecimento ficam no seu espaço." : "Acesse seu espaço de agentes."}</p>
