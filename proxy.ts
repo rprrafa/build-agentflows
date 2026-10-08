@@ -46,7 +46,15 @@ export async function proxy(request: NextRequest) {
   if (rotaPublica(pathname, request.method)) return permitir();
   try {
     const user = await findSession(saasDatabase(), sessionToken(request));
-    if (user?.email_verified_at && user.beta_status === "approved") return permitir();
+    if (user?.email_verified_at && user.beta_status === "approved") {
+      // A released account has no use for the invite: clean the URL and any pending cookie.
+      if (!request.nextUrl.searchParams.has("invite") || request.method !== "GET" || pathname.startsWith("/api/")) return permitir();
+      const clean = request.nextUrl.clone();
+      clean.searchParams.delete("invite");
+      const response = NextResponse.redirect(clean);
+      response.headers.append("Set-Cookie", inviteCookie("", true));
+      return response;
+    }
     if (pathname.startsWith("/api/") || pathname === "/mcp") return NextResponse.json({ error: user ? "Acesso ao beta pendente ou suspenso." : "Entre na sua conta." }, { status: user ? 403 : 401 });
     const destination = new URL(user ? "/acesso" : "/entrar", request.url);
     if (invite) destination.searchParams.set("invite", invite);

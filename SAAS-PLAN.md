@@ -53,7 +53,8 @@ HttpOnly de 24 horas (`agentflows_invite`) e o mantém nos redirecionamentos e
 links de entrada/cadastro. Ao chegar em `/acesso` com o e-mail confirmado e a
 conta na lista de espera, o convite é resgatado sem outro clique. O cookie é
 descartado após o resgate, quando o convite é recusado de forma definitiva e
-no logout; continua enquanto falta confirmar o e-mail.
+no logout; continua enquanto falta confirmar o e-mail. Conta já liberada que abre
+uma página com `?invite=` é redirecionada para a mesma URL sem o parâmetro.
 
 APIs validam sessão, origem, tamanho do corpo e limites persistidos; respostas
 privadas não são armazenadas em cache. O proxy é uma camada adicional, e as
