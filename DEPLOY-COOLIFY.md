@@ -52,8 +52,13 @@ com IDs opacos. Se Redis perder avisos ou ficar indisponível após a inicializa
 o worker continua consultando a fila durável. Não há repetição automática de
 uma execução interrompida que possa ter produzido efeitos externos.
 
-Limites atuais: duas tarefas simultâneas globalmente, uma por usuário; até dez
-pendentes/ativas por conta e mil no total. A autorização do worker expira em
+Limites configuráveis por ambiente (padrão entre parênteses):
+`EXECUCOES_SIMULTANEAS` (6) tarefas simultâneas no total, `FILA_LIMITE_USUARIO`
+(100) pendentes/ativas por conta, `FILA_LIMITE_TOTAL` (2000) no total e
+`POSTGRES_CONEXOES` (10) por processo. Cada conta executa uma tarefa por vez,
+porque a sessão ChatGPT abre um único processo Codex; cada execução simultânea
+consome cerca de 100 a 200 MB do worker, então aumente `mem_limit` junto com
+`EXECUCOES_SIMULTANEAS`. A autorização do worker expira em
 60 segundos, é renovada a cada dez segundos e a tarefa tem prazo de 15 minutos.
 O worker também entrega a outbox Resend e remove registros expirados.
 

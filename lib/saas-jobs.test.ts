@@ -5,7 +5,7 @@ import { createTestDatabase } from "../scripts/saas-test-db";
 import { migrateDatabase } from "./db/migrate";
 import { withTenantJob } from "./tenant-context";
 import { createTenantFlow, getTenantRun, listTenantRuns, putTenantRun, cancelTenantRun } from "./tenant-flows";
-import { enqueueRun, enqueueResume, enqueueKnowledge, claimJob, recoverExpiredJobs, heartbeatJob, finishJob } from "./saas-jobs";
+import { enqueueRun, enqueueResume, enqueueKnowledge, claimJob, queueLimits, recoverExpiredJobs, heartbeatJob, finishJob } from "./saas-jobs";
 import { runClaimedJob } from "./saas-worker";
 import { withJobLease } from "./saas-job-context";
 import { template, block } from "./flow-types";
@@ -103,6 +103,23 @@ test("limite global impede um terceiro usuário de executar até liberar uma vag
   const next = await claimJob(db);
   assert.ok(next);
   assert.ok(!claimed.some((job) => job.user_id === next.user_id));
+});
+
+test("limites da fila vêm do ambiente, com padrões para turmas grandes e uma execução por conta", async () => {
+  const keys = ["FILA_LIMITE_USUARIO", "FILA_LIMITE_TOTAL", "EXECUCOES_SIMULTANEAS"] as const, saved = keys.map((key) => process.env[key]);
+  try {
+    delete process.env.FILA_LIMITE_USUARIO; delete process.env.EXECUCOES_SIMULTANEAS; process.env.FILA_LIMITE_TOTAL = "0";
+    assert.deepEqual(queueLimits(), { perUser: 100, total: 2000, running: 6 });
+    process.env.FILA_LIMITE_USUARIO = "3"; process.env.EXECUCOES_SIMULTANEAS = "1";
+    const flow = await asA(create), other = await asB(create);
+    for (let i = 0; i < 3; i++) await asA(() => enqueueRun(flow.id, `Env ${i}`, false, true));
+    await assert.rejects(asA(() => enqueueRun(flow.id, "Overflow", false, true)), (error: unknown) => (error as { status: number }).status === 429);
+    await asB(() => enqueueRun(other.id, "Other", false, true));
+    assert.ok(await claimJob(db)); assert.equal(await claimJob(db), undefined);
+    process.env.EXECUCOES_SIMULTANEAS = "4";
+    // Uma conta continua com uma tarefa por vez, mesmo com vagas globais livres.
+    const second = await claimJob(db); assert.ok(second); assert.equal(await claimJob(db), undefined);
+  } finally { keys.forEach((key, i) => { if (saved[i] === undefined) delete process.env[key]; else process.env[key] = saved[i]; }); }
 });
 
 test("cancelar tarefa ativa preserva a vaga até confirmação do worker", async () => {

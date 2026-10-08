@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { saasDatabase } from "../lib/saas-db.ts";
 import { migrateDatabase } from "../lib/db/migrate.ts";
-import { claimJob, recoverExpiredJobs } from "../lib/saas-jobs.ts";
+import { claimJob, queueLimits, recoverExpiredJobs } from "../lib/saas-jobs.ts";
 import { runClaimedJob } from "../lib/saas-worker.ts";
 import { nextJobNotification, closeQueue } from "../lib/saas-queue.ts";
 import { deliverAuthMail } from "../lib/saas-mail.ts";
@@ -37,13 +37,13 @@ try {
         mail = deliverAuthMail(db).catch(() => console.error("Não foi possível processar a fila de e-mails."))
           .finally(() => { sendingMail = false; });
       }
-      if (active.size < 2) {
+      // Fill every free slot per tick so a burst does not start at one job per second.
+      while (active.size < queueLimits().running && !stop.signal.aborted) {
         const job = await claimJob(db, await nextJobNotification() || undefined);
-        if (job) {
-          const work = runClaimedJob(db, job, drain.signal).catch(() => console.error("Falha ao finalizar job; a recuperação verificará a autorização expirada."))
-            .finally(() => active.delete(work));
-          active.add(work);
-        }
+        if (!job) break;
+        const work = runClaimedJob(db, job, drain.signal).catch(() => console.error("Falha ao finalizar job; a recuperação verificará a autorização expirada."))
+          .finally(() => active.delete(work));
+        active.add(work);
       }
     } catch { console.error("Worker aguardando recuperação da infraestrutura."); }
     await new Promise((resolve) => { const timer = setTimeout(done, 1000); function done() { clearTimeout(timer); stop.signal.removeEventListener("abort", done); resolve(); } stop.signal.addEventListener("abort", done, { once: true }); if (stop.signal.aborted) done(); });

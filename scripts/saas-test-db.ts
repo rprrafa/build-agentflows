@@ -7,6 +7,10 @@ import type { PgliteClient } from "drizzle-orm/pglite";
 import * as schema from "../lib/db/schema";
 import type { Database, Sql } from "../lib/saas-db";
 
+// Server tests assert the original small limits; production defaults live in queueLimits().
+process.env.FILA_LIMITE_USUARIO ??= "10";
+process.env.EXECUCOES_SIMULTANEAS ??= "2";
+
 /** Never uses DATABASE_URL. Server tests own a fresh, disposable database per file. */
 export async function createTestDatabase() {
   const url = process.env.SAAS_TEST_DATABASE_URL;

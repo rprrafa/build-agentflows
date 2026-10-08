@@ -9,12 +9,16 @@ import type { Run } from "./flow-types";
 
 export type Job = { id: string; user_id: string; kind: "run" | "index" | "extract"; resource_id: string; run_id: string | null; base_id: string | null; source_id: string | null; status: string; lease_token: string | null; error: string | null };
 export const queueLock = (sql: Sql) => sql.query("SELECT pg_advisory_xact_lock(742193802)");
+const positive = (name: string, fallback: number) => { const n = Number(process.env[name]); return Number.isInteger(n) && n > 0 ? n : fallback; };
+/** Read per call so tests and deploys can tune limits without code changes. Each account still runs one job at a time (ChatGPT session lease). */
+export const queueLimits = () => ({ perUser: positive("FILA_LIMITE_USUARIO", 100), total: positive("FILA_LIMITE_TOTAL", 2000), running: positive("EXECUCOES_SIMULTANEAS", 6) });
 export async function capacity(sql: Sql, owner: string) {
   await queueLock(sql);
   const user = await sql.query("SELECT id FROM users WHERE id=$1 AND beta_status='approved' AND email_verified_at IS NOT NULL FOR UPDATE", [owner]);
   if (!user.rows.length) throw new FlowError("Acesso ao beta pendente ou suspenso.", 403);
   const { rows } = await sql.query<{ own: number; total: number }>("SELECT count(*) FILTER(WHERE user_id=$1)::int own,count(*)::int total FROM jobs WHERE status IN ('queued','running') OR (status='cancelled' AND lease_until IS NOT NULL)", [owner]);
-  if (rows[0].own >= 10 || rows[0].total >= 1000) throw new FlowError("A fila atingiu o limite. Aguarde as tarefas em andamento.", 429);
+  const limits = queueLimits();
+  if (rows[0].own >= limits.perUser || rows[0].total >= limits.total) throw new FlowError("A fila atingiu o limite. Aguarde as tarefas em andamento.", 429);
 }
 export async function insertJob(sql: Sql, job: Pick<Job, "user_id" | "kind" | "resource_id" | "run_id" | "base_id" | "source_id">) {
   const id = randomUUID();
@@ -76,7 +80,7 @@ export async function claimJob(db: Database, preferredId?: string): Promise<Job 
     await queueLock(sql);
     // Cancellation revokes execution immediately, but holds capacity until the
     // worker acknowledges shutdown or recovery expires its lease.
-    if ((await sql.query<{ n: number }>("SELECT count(*)::int n FROM jobs WHERE status='running' OR (status='cancelled' AND lease_until IS NOT NULL)", [])).rows[0].n >= 2) return undefined;
+    if ((await sql.query<{ n: number }>("SELECT count(*)::int n FROM jobs WHERE status='running' OR (status='cancelled' AND lease_until IS NOT NULL)", [])).rows[0].n >= queueLimits().running) return undefined;
     const { rows } = await sql.query<Job>(`SELECT j.* FROM jobs j JOIN users u ON u.id=j.user_id
       WHERE j.status='queued' AND u.beta_status='approved' AND u.email_verified_at IS NOT NULL
       AND NOT EXISTS(SELECT 1 FROM jobs busy WHERE busy.user_id=j.user_id AND (busy.status='running' OR (busy.status='cancelled' AND busy.lease_until IS NOT NULL)))

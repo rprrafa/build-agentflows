@@ -99,7 +99,9 @@ no Render não se aplica a este repositório.
 As APIs privadas `/api/flows` e `/api/runs` exigem sessão de uma conta verificada
 com acesso ao beta. Criar uma execução retorna HTTP 202; o worker processa a fila
 e a interface consulta o progresso. Fluxos, extração e indexação compartilham
-uma vaga por usuário, com duas tarefas simultâneas globalmente.
+uma vaga por usuário; o total simultâneo e o tamanho da fila são configuráveis
+(`EXECUCOES_SIMULTANEAS`, `FILA_LIMITE_USUARIO`, `FILA_LIMITE_TOTAL`; veja
+DEPLOY-COOLIFY.md).
 
 O chat incorporado usa tickets vinculados ao proprietário e à conversa, anexos
 privados e a mesma fila dos fluxos. Veja [EMBED-TENANTS.md](EMBED-TENANTS.md).

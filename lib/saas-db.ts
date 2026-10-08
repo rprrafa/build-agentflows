@@ -29,7 +29,7 @@ export function saasDatabase() {
   if (!process.env.DATABASE_URL) throw new Error("Configure DATABASE_URL para o PostgreSQL.");
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    max: 5,
+    max: Number(process.env.POSTGRES_CONEXOES) > 0 ? Number(process.env.POSTGRES_CONEXOES) : 10,
     connectionTimeoutMillis: 5000,
     idleTimeoutMillis: 30000,
     statement_timeout: 15000,
