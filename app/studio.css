@@ -3853,3 +3853,53 @@
 .credential-chatgpt .chatgpt-usage { border-top: 0; padding-top: 4px; }
 .settings-credential-link { margin-bottom: 24px; }
 @media (max-width: 600px) { .credential-chatgpt .credential-manager-row { flex-wrap: wrap; } }
+
+/* Minha conta e limites do beta */
+.studio-profile-menu a { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px; border-radius: 6px; color: var(--studio-ink); font-size: 12px; }
+.studio-profile-menu a:hover, .studio-profile-menu a[aria-current="page"] { background: var(--studio-primary-soft); }
+.account-page { max-width: 760px; margin: 0; }
+.account-page .library-header { margin-bottom: 24px; }
+.account-card { margin-bottom: 16px; }
+.account-card h2 { font-size: 14px; font-weight: 650; color: var(--studio-ink); margin-bottom: 12px; }
+.account-card-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+.account-card-title h2 { margin: 0; }
+.account-plan { padding: 3px 10px; border-radius: 999px; background: var(--studio-bg); border: 1px solid var(--studio-line); font-size: 11px; font-weight: 650; color: var(--studio-muted); }
+.account-plan.unlimited { background: var(--studio-primary-soft); border-color: transparent; color: var(--studio-primary); }
+.account-profile { display: grid; gap: 10px; margin: 0; }
+.account-profile > div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px; }
+.account-profile dt { color: var(--studio-muted); font-size: 12px; }
+.account-profile dd { margin: 0; color: var(--studio-ink); font-weight: 600; overflow-wrap: anywhere; }
+.account-usage { padding: 14px 0; border-top: 1px solid var(--studio-line); }
+.account-card-title + .account-usage { border-top: 0; }
+.account-usage > div { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.account-usage strong { font-size: 12px; }
+.account-usage span { font-size: 12px; color: var(--studio-ink); font-variant-numeric: tabular-nums; }
+.account-usage progress { display: block; width: 100%; height: 8px; margin: 8px 0 6px; appearance: none; border: 0; border-radius: 6px; overflow: hidden; background: var(--studio-line); }
+.account-usage progress::-webkit-progress-bar { background: var(--studio-line); }
+.account-usage progress::-webkit-progress-value { background: var(--studio-primary); }
+.account-usage progress::-moz-progress-bar { background: var(--studio-primary); }
+.account-usage.exhausted progress::-webkit-progress-value { background: #c44453; }
+.account-usage.exhausted progress::-moz-progress-bar { background: #c44453; }
+.account-usage small, .account-password small { color: var(--studio-muted); font-size: 11px; }
+.account-usage.exhausted small { color: #c44453; }
+.account-upgrade { margin-top: 8px; }
+.account-password { display: grid; gap: 12px; max-width: 420px; }
+.account-field { display: grid; gap: 6px; font-size: 12px; font-weight: 600; color: var(--studio-ink); }
+.account-field input { width: 100%; padding: 10px 12px; border: 1px solid var(--studio-line); border-radius: 8px; background: var(--studio-bg); color: var(--studio-ink); font: inherit; font-weight: 400; }
+.account-field input:focus { outline: none; border-color: var(--studio-primary); box-shadow: 0 0 0 3px var(--studio-primary-soft); }
+.account-error { color: #c44453; font-size: 12px; }
+.account-success { color: #2f8a5b; font-size: 12px; }
+:root[data-studio-theme="dark"] .account-success { color: #6fd19c; }
+:root[data-studio-theme="dark"] .account-error, :root[data-studio-theme="dark"] .account-usage.exhausted small { color: #f0899a; }
+.studio-modal.plan-limit-modal { width: min(440px, calc(100vw - 32px)); }
+.plan-limit-body { display: grid; gap: 10px; }
+.plan-limit-icon { display: inline-grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; background: var(--studio-primary-soft); color: var(--studio-primary); }
+.plan-limit-body p { margin: 0; color: var(--studio-ink); font-size: 13px; }
+.studio-modal .plan-limit-body .plan-limit-pitch { color: var(--studio-muted); font-size: 12px; }
+.plan-limit-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+@media (max-width: 720px) {
+  .account-profile > div { grid-template-columns: 1fr; gap: 2px; }
+  .account-upgrade { flex-wrap: wrap; }
+  .account-upgrade .studio-button { margin-left: 0; width: 100%; }
+  .plan-limit-actions .studio-button { flex: 1; }
+}

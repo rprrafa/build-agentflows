@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import type { Flow, Kind } from "@/lib/flow-types";
 import { BLOCKS } from "@/lib/flow-types";
 import { PRESETS, NODE_STYLE } from "@/lib/flow-presets";
-import { Icon, IconButton, Modal, StudioShell, request } from "./StudioUI";
+import { Icon, IconButton, Modal, StudioShell, announcePlanLimit, request } from "./StudioUI";
+import type { AccountUsage } from "@/lib/saas-plan";
 import { ChatGPTConnection, useChatGPT } from "./ChatGPTConnection";
 export function FlowLibrary() {
   const router = useRouter(),
@@ -75,6 +76,12 @@ export function FlowLibrary() {
     }
   }
   async function create(presetId?: string) {
+    // The editor only creates the flow on save: warn before any work is done. The server still enforces it.
+    const usage = await request<{ usage: AccountUsage }>("/api/conta").then((a) => a.usage).catch(() => null);
+    if (usage?.flows.limit != null && usage.flows.used >= usage.flows.limit) {
+      announcePlanLimit(`O beta permite até ${usage.flows.limit} fluxos por conta. Exclua um fluxo ou faça parte do AI Action para ter fluxos ilimitados.`, usage.upgradeUrl);
+      return;
+    }
     router.push("/flows/new" + (presetId ? "?preset=" + encodeURIComponent(presetId) : ""));
   }
   async function duplicate(f: Flow) {
@@ -387,7 +394,7 @@ export function FlowLibrary() {
             </div>
           </nav>
         )}
-        {!connection?.account && (
+        {connection && !connection.account && (
           <div className="library-connect-banner">
             <Icon name="spark" size={23} />
             <div>

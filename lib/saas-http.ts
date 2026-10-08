@@ -5,6 +5,7 @@ import { consumeActionToken, findSession, loginUser, redeemInvite, registerUser,
 import { consumeRateLimit, rateLimitClient, RateLimitError } from "./saas-rate-limit";
 import { withTenantSession } from "./tenant-context";
 import { FlowError } from "./flow-store";
+import { AI_ACTION_URL, PlanLimitError } from "./saas-plan";
 
 export function sessionToken(req: Request) {
   return req.headers.get("cookie")?.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${SAAS_SESSION_COOKIE}=`))?.slice(SAAS_SESSION_COOKIE.length + 1);
@@ -61,7 +62,8 @@ export function privateJson(value: unknown, init?: ResponseInit) {
 }
 export function httpError(error: unknown) {
   const known = error instanceof AuthError || error instanceof FlowError;
-  return privateJson({ error: known ? error.message : "Não foi possível concluir. Tente novamente." }, {
+  const plan = error instanceof PlanLimitError ? { code: error.code, upgradeUrl: AI_ACTION_URL } : {};
+  return privateJson({ error: known ? error.message : "Não foi possível concluir. Tente novamente.", ...plan }, {
     status: known ? error.status : 500,
     headers: error instanceof RateLimitError ? { "Retry-After": String(error.retryAfter) } : undefined,
   });

@@ -10,6 +10,8 @@ import type { Database, Sql } from "../lib/saas-db";
 // Server tests assert the original small limits; production defaults live in queueLimits().
 process.env.FILA_LIMITE_USUARIO ??= "10";
 process.env.EXECUCOES_SIMULTANEAS ??= "2";
+// Older suites create many flows per account; saas-plan.test.ts sets the beta limits explicitly.
+process.env.LIMITE_FLUXOS ??= "1000";
 
 /** Never uses DATABASE_URL. Server tests own a fresh, disposable database per file. */
 export async function createTestDatabase() {

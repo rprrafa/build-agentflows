@@ -3,6 +3,7 @@ import { buildRun, cancelRun } from "./flow-runtime";
 import { cancelCommands, commands, embedSettings, getSession, updateSession, requestRun, readSession, assertSessionIdentity, type EmbedIdentity, ownedSession } from "./embed-store";
 import { currentTenant } from "./tenant-context";
 import { capacity, insertJob, enqueueResume, queueLock } from "./saas-jobs";
+import { consumeMonthlyRun } from "./saas-plan";
 import { persistTenantRun } from "./tenant-flows";
 import { notifyJob } from "./saas-queue";
 import { consumeRateLimit } from "./saas-rate-limit";
@@ -29,6 +30,7 @@ export async function sendEmbedMessage(sessionId: string, identity: EmbedIdentit
     if (attachmentIds.some(id => !fresh.attachments.includes(id))) throw new FlowError("Anexo não pertence à conversa.");
     const active = await sql.query("SELECT 1 FROM runs r JOIN embed_requests e ON r.user_id=e.user_id AND r.id=e.run_id WHERE e.user_id=$1 AND e.session_id=$2 AND r.status IN ('running','waiting') LIMIT 1", [user.id, session.id]);
     if (active.rows.length) throw new FlowError("Conclua ou cancele a tarefa atual antes de enviar outra mensagem.", 409);
+    await consumeMonthlyRun(sql, user.id);
     await persistTenantRun(sql, user.id, run);
     for (const item of run.attachments || []) await sql.query("UPDATE attachments SET used=true WHERE user_id=$1 AND id=$2", [user.id, item.id]);
     await sql.query("INSERT INTO embed_requests(user_id,session_id,request_id,flow_id,run_id) VALUES($1,$2,$3,$4,$5)", [user.id, session.id, requestId, session.flowId, run.id]);

@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## Não publicado
+
+- Plano beta com até 1000 execuções reais por mês e 5 fluxos por conta (`LIMITE_EXECUCOES_MES`, `LIMITE_FLUXOS`); contas AI Action são ilimitadas. Uso mensal em `usage_months`, contado na mesma transação que enfileira a execução.
+- Ao atingir um limite, diálogo convida a fazer parte do AI Action; Novo Fluxo Agêntico avisa antes de abrir o editor.
+- Minha conta no menu do nome de usuário: nome, e-mail, forma de acesso, uso do mês e alteração de senha (contas com senha), encerrando as outras sessões.
+- Aviso de conexão do ChatGPT na tela inicial só aparece depois de confirmar que a conta não está conectada.
+
 ## 0.18.0 — 08/10/2026
 
 - Aplicação exclusivamente multi-tenant com PostgreSQL/Drizzle; removidos armazenamento SQLite, fallbacks globais e aliases de conexões da primeira versão.

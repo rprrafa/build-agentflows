@@ -161,3 +161,28 @@ export async function cleanupAuth(sql: Sql) {
   await sql.query("DELETE FROM rate_limits WHERE resets_at<=now()");
   await sql.query("DELETE FROM mail_outbox WHERE coalesce(sent_at,failed_at)<now()-interval '7 days'");
 }
+
+export async function accountProfile(sql: Sql, userId: string) {
+  const { rows } = await sql.query<{ name: string; email: string; has_password: boolean; google: boolean }>(
+    "SELECT name,email,password_hash IS NOT NULL has_password,google_sub IS NOT NULL google FROM users WHERE id=$1", [userId]);
+  if (!rows[0]) throw new AuthError("Conta não encontrada.", 404);
+  return { name: rows[0].name, email: rows[0].email, hasPassword: rows[0].has_password, google: rows[0].google };
+}
+
+/** Requires the current password; other sessions are revoked and this one is kept. */
+export async function changePassword(db: Database, userId: string, data: { current: unknown; password: unknown }, keepToken: string | undefined) {
+  await consumeRateLimit(db, `password-change:${userId}`, 5, 900);
+  const { rows } = await db.query<{ password_hash: string | null }>("SELECT password_hash FROM users WHERE id=$1", [userId]);
+  if (!rows[0]?.password_hash) throw new AuthError("Esta conta entra com o Google e não tem senha.", 409);
+  if (!(await verifyPassword(data.current, rows[0].password_hash))) throw new AuthError("A senha atual não confere.", 403);
+  validatePassword(data.password);
+  if (data.password === data.current) throw new AuthError("Escolha uma senha diferente da atual.");
+  const encoded = await passwordHash(data.password);
+  await db.transaction(async (sql) => {
+    // Compare after the KDF: a concurrent reset must not be overwritten by a stale check.
+    const updated = await sql.query("UPDATE users SET password_hash=$3 WHERE id=$1 AND password_hash=$2 RETURNING id", [userId, rows[0].password_hash, encoded]);
+    if (!updated.rows.length) throw new AuthError("A senha foi alterada em outra sessão. Entre novamente.", 409);
+    await sql.query("DELETE FROM sessions WHERE user_id=$1 AND token_hash<>$2", [userId, keepToken ? hashToken(keepToken) : ""]);
+    await sql.query("DELETE FROM action_tokens WHERE user_id=$1 AND purpose='reset_password'", [userId]);
+  });
+}

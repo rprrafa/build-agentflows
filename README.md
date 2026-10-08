@@ -81,6 +81,13 @@ npm run build
 Configure `.env` com `APP_URL=http://localhost:3019`, chave mestra, senhas do
 PostgreSQL/Redis e Resend, conforme [DEPLOY-COOLIFY.md](DEPLOY-COOLIFY.md).
 
+Plano beta: até 1000 execuções reais por mês e 5 fluxos por conta
+(`LIMITE_EXECUCOES_MES`, `LIMITE_FLUXOS`). Ao atingir um limite, a interface
+convida a fazer parte do AI Action (https://pages.startse.com/ai-action), plano
+sem esses limites liberado pelo administrador. **Minha conta** (`/minha-conta`,
+no menu do nome de usuário) mostra nome, e-mail, uso do mês e permite alterar
+a senha em contas com senha; contas só com Google não têm senha.
+
 ```sh
 docker compose up --build
 ```

@@ -13,9 +13,17 @@ export const users = pgTable("users", {
   password_hash: text("password_hash"), google_sub: text("google_sub").unique(),
   email_verified_at: time("email_verified_at"), beta_status: text("beta_status").notNull().default("pending"),
   approved_at: time("approved_at"), created_at: time("created_at").notNull().defaultNow(),
+  // beta: monthly run and flow limits; ai_action: unlimited (set by an administrator).
+  plan: text("plan").notNull().default("beta"),
 }, (t) => [check("users_name", sql`length(${t.name}) BETWEEN 1 AND 120`),
+  check("users_plan", sql`${t.plan} IN ('beta','ai_action')`),
   check("users_email", sql`${t.email}=lower(${t.email}) AND length(${t.email})<=254`),
   check("users_beta_status", sql`${t.beta_status} IN ('pending','approved','blocked')`)]);
+// Monthly run counter (America/Sao_Paulo calendar month). Deleting runs or flows never refunds usage.
+export const usageMonths = pgTable("usage_months", {
+  user_id: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }), month: text("month").notNull(),
+  runs: integer("runs").notNull().default(0),
+}, (t) => [primaryKey({ columns: [t.user_id, t.month] }), check("usage_months_month", sql`${t.month} ~ '^[0-9]{4}-[0-9]{2}$'`), check("usage_months_runs", sql`${t.runs}>=0`)]);
 export const sessions = pgTable("sessions", {
   token_hash: text("token_hash").primaryKey(), user_id: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   created_at: time("created_at").notNull().defaultNow(), expires_at: time("expires_at").notNull(),

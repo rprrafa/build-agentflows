@@ -300,14 +300,21 @@ export async function request<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const data = await readJson(r);
+  if (!r.ok && data?.code === "plan_limit") announcePlanLimit(data.error || "Você atingiu o limite do beta.", data.upgradeUrl);
   if (!r.ok) throw new Error(data?.error || unavailableMessage(r.status));
   if (data === undefined) throw new Error(unavailableMessage(r.status));
   return data as T;
 }
 // Proxies and gateways answer with plain text ("no available server") when the app is down.
-export async function readJson(r: Response): Promise<{ error?: string } | undefined> {
+export async function readJson(r: Response): Promise<{ error?: string; code?: string; upgradeUrl?: string } | undefined> {
   const text = await r.text();
   try { return text ? JSON.parse(text) : undefined; } catch { return undefined; }
+}
+/** Beta limit reached: PlanLimitDialog, mounted in the root layout, offers the AI Action plan. */
+export const PLAN_LIMIT_EVENT = "agentflows:plan-limit";
+export type PlanLimitDetail = { message: string; upgradeUrl: string };
+export function announcePlanLimit(message: string, upgradeUrl = "https://pages.startse.com/ai-action") {
+  window.dispatchEvent(new CustomEvent<PlanLimitDetail>(PLAN_LIMIT_EVENT, { detail: { message, upgradeUrl } }));
 }
 export function unavailableMessage(status: number) {
   return status >= 500 || status === 0 ? "O servidor está indisponível no momento. Tente novamente em instantes." : "Não foi possível concluir.";
@@ -364,7 +371,7 @@ export function StudioShell({
   active,
 }: {
   children: ReactNode;
-  active: "flows" | "runs" | "connections" | "knowledge" | "credentials";
+  active: "flows" | "runs" | "connections" | "knowledge" | "credentials" | "account";
 }) {
   useDismissMenus();
   const router = useRouter();
@@ -437,6 +444,7 @@ export function StudioShell({
             </summary>
             <div className="studio-profile-menu">
               {accountError && <p role="alert">{accountError}</p>}
+              <Link href="/minha-conta" aria-current={active === "account" ? "page" : undefined}><Icon name="user" size={16} />Minha conta</Link>
               <button type="button" disabled={signingOut} onClick={async () => {
                 setSigningOut(true); setAccountError("");
                 try { await request("/api/auth/logout", "POST"); router.push("/entrar"); router.refresh(); }

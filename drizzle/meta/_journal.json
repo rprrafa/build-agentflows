@@ -36,6 +36,13 @@
       "when": 1790709444238,
       "tag": "0004_internal-record-manager",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791467075563,
+      "tag": "0005_account-plan",
+      "breakpoints": true
     }
   ]
 }

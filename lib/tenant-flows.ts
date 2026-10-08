@@ -7,6 +7,7 @@ import { assertJobLease } from "./saas-job-context";
 import type { Sql } from "./saas-db";
 import { readToolCards } from "./agent-tools";
 import { knowledgeSettings } from "./knowledge-settings";
+import { assertFlowCapacity } from "./saas-plan";
 
 async function validateReferences(sql: Sql, owner: string, graph: Graph) {
   await sql.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [owner]);
@@ -47,6 +48,7 @@ export async function createTenantFlow(name = "Novo fluxo", example = false, sav
   if (saved !== undefined) flow = normalizeFlowUpdate(flow, saved);
   await db.transaction(async (sql) => {
     await validateReferences(sql, user.id, flow.graph);
+    await assertFlowCapacity(sql, user.id);
     await sql.query("INSERT INTO flows(user_id,id,body) VALUES ($1,$2,$3)", [user.id, flow.id, JSON.stringify(flow)]);
   });
   return flow;

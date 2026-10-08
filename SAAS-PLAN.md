@@ -96,6 +96,21 @@ volumes, healthchecks, shutdown e limites de recursos. Migrações usam trava de
 deploy para impedir aplicação simultânea. `npm run test:docker` cria projeto e
 volumes descartáveis e não usa dados ou segredos reais da aplicação.
 
+## Planos e limites mensais
+
+| Plano | Execuções por mês | Fluxos |
+| --- | --- | --- |
+| `beta` (padrão) | 1000 (`LIMITE_EXECUCOES_MES`) | 5 (`LIMITE_FLUXOS`) |
+| `ai_action` | ilimitadas | ilimitados |
+
+O mês é civil, no horário de Brasília (`usage_months.month` = `AAAA-MM`). Contam
+execuções reais criadas pelo chat, MCP, webhook, canais e chat incorporado, no
+mesmo bloqueio e transação que enfileira o run; simulações e retomadas após
+aprovação não contam. Excluir execuções ou fluxos não devolve o uso do mês.
+Contas acima de 5 fluxos antes do limite mantêm seus fluxos, mas só criam
+outro depois de ficar abaixo do limite. O erro HTTP 403 traz `code: "plan_limit"`
+e `upgradeUrl`, e a interface oferece o AI Action.
+
 ## Validação
 
 Em 29/09/2026: **307 testes gerais e 104 testes com PostgreSQL servidor**
@@ -162,6 +177,15 @@ LEFT JOIN invite_redemptions r ON r.invite_id = i.id
 LEFT JOIN users u ON u.id = r.user_id;
 
 UPDATE invites SET revoked_at = now() WHERE label = 'Turma inicial';
+
+-- Participante do AI Action: execuções e fluxos ilimitados. Voltar com plan = 'beta'.
+UPDATE users SET plan = 'ai_action' WHERE email = 'pessoa@example.com';
+
+-- Uso do mês corrente por conta.
+SELECT u.email, u.plan, coalesce(m.runs, 0) AS execucoes,
+       (SELECT count(*) FROM flows f WHERE f.user_id = u.id) AS fluxos
+FROM users u LEFT JOIN usage_months m
+  ON m.user_id = u.id AND m.month = to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'YYYY-MM');
 ```
 
 Uma aprovação administrativa não substitui confirmação do e-mail. Códigos são

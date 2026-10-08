@@ -6,6 +6,7 @@ import { buildRun } from "./flow-runtime";
 import { persistTenantRun } from "./tenant-flows";
 import { settleChannelDelivery } from "./channel-flows";
 import type { Run } from "./flow-types";
+import { consumeMonthlyRun } from "./saas-plan";
 
 export type Job = { id: string; user_id: string; kind: "run" | "index" | "extract"; resource_id: string; run_id: string | null; base_id: string | null; source_id: string | null; status: string; lease_token: string | null; error: string | null };
 export const queueLock = (sql: Sql) => sql.query("SELECT pg_advisory_xact_lock(742193802)");
@@ -34,6 +35,8 @@ export async function enqueueRun(...args: Parameters<typeof buildRun>) {
   run.queued = true;
   const job = await db.transaction(async (sql) => {
     await capacity(sql, user.id);
+    // Simulations never reach a model; approval resumes continue an already counted run.
+    if (!run.demo) await consumeMonthlyRun(sql, user.id);
     await persistTenantRun(sql, user.id, run);
     for (const item of run.attachments || []) await sql.query("UPDATE attachments SET used=true WHERE user_id=$1 AND id=$2", [user.id, item.id]);
     return insertJob(sql, { user_id: user.id, kind: "run", resource_id: run.id, run_id: run.id, base_id: null, source_id: null });

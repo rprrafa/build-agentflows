@@ -5,6 +5,7 @@ import { whatsappConfigurado, provedorWhatsApp } from "./conexoes";
 import { buildRun } from "./flow-runtime";
 import { currentTenant } from "./tenant-context";
 import { capacity, insertJob, queueLock, type Job } from "./saas-jobs";
+import { consumeMonthlyRun } from "./saas-plan";
 import { persistTenantRun } from "./tenant-flows";
 import { notifyJob } from "./saas-queue";
 import { hashToken, seal, unseal, AuthError } from "./saas-security";
@@ -41,6 +42,7 @@ async function enqueueEvent(channel: Channel, identity: string[], input: string,
     const duplicate = (await sql.query<{ run_id: string }>("SELECT run_id FROM channel_events WHERE user_id=$1 AND event_key=$2", [user.id, key])).rows[0];
     if (duplicate) return { runId: duplicate.run_id, duplicate: true };
     await capacity(sql, user.id);
+    await consumeMonthlyRun(sql, user.id);
     const fresh = await loadConfigState(sql, user.id);
     if (fingerprint(channel, k => fresh.values.get(k)) !== binding) throw new AuthError("A conexão mudou. Reenvie o aviso.", 409);
     await consumeRateLimit(sql, `channel-execute:user:${user.id}`, 20, 60);

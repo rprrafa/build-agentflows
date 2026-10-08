@@ -62,6 +62,10 @@ consome cerca de 100 a 200 MB do worker, então aumente `mem_limit` junto com
 60 segundos, é renovada a cada dez segundos e a tarefa tem prazo de 15 minutos.
 O worker também entrega a outbox Resend e remove registros expirados.
 
+Limites do plano beta, por conta: `LIMITE_EXECUCOES_MES` (1000) execuções reais
+por mês civil (horário de Brasília) e `LIMITE_FLUXOS` (5) fluxos. Contas com
+`plan='ai_action'` não têm esses limites (veja SAAS-PLAN.md).
+
 Fluxos, extração e indexação compartilham a mesma cota por usuário. Ao cancelar
 uma tarefa ativa, a vaga fica reservada até o worker confirmar o encerramento
 ou a recuperação detectar a autorização expirada; cancelar não permite furar
