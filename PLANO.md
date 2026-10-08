@@ -225,3 +225,15 @@ As limitações das rodadas anteriores sobre Gmail, Google/Microsoft, Browserles
 # Rodada 8: Base de Conhecimento — 0.11.0
 
 O pedido de 25/09/2026 supera a exclusão histórica de RAG deste plano. A jornada Document Store do Flowise passa a fazer parte do produto: 20 extratores em ordem alfabética, revisão/edição de fragmentos, Embeddings, Vector Store, Record Manager, indexação com histórico, consulta e seleção no Agente com referências opcionais. Consulte KNOWLEDGE.md e KNOWLEDGE-PLAN.md para implementação e evidências.
+
+# Pendente: resiliência das execuções em deploys
+
+Registrado em 08/10/2026 para implementação futura. A fila durável no PostgreSQL já preserva tarefas `queued`, aprovações pendentes e deduplica avisos de canal; o worker drena até 185 s no SIGTERM. Lacunas e itens, por ordem de impacto:
+
+1. **Repetição no cliente com idempotência.** Chamadas de execução (`POST /api/flows/[id]/run`) e de aprovação (`/api/runs/[id]`) repetem com espera crescente em erro de rede ou 502/503. A rota de execução aceita uma chave de idempotência gerada pelo cliente e devolve o run existente na repetição, para não duplicar execuções quando a resposta se perde durante o deploy.
+2. **Deploy do `app` sem indisponibilidade.** Hoje há uma réplica recriada a cada deploy (`start_period` de 60 s), e nesse intervalo falham execuções, aprovações, avisos em `app/webhook/*` e a geração síncrona de fluxos. Avaliar duas réplicas atrás do proxy ou atualização gradual com healthcheck; confirmar se o Coolify suporta isso com Docker Compose.
+3. **Recriar o `worker` só quando necessário.** Separar o deploy do worker do deploy do web, para que alterações só de interface não interrompam execuções em andamento.
+4. **Execuções longas no deploy.** Tarefas podem durar até 15 min, mas a drenagem é de 185 s; o excedente vira `interrupted` sem repetição automática (decisão mantida: ação externa pode já ter ocorrido). Ajustar `DRAIN_MS` e `stop_grace_period` juntos se fluxos acima de 3 min forem frequentes.
+5. **Reenvio dos provedores de canal.** Confirmar o comportamento de reenvio de Z-API, ZapperHub e do aviso pós-ligação da ElevenLabs quando o `app` está fora do ar (a Meta reenvia; a deduplicação por `channel_events` já cobre repetições).
+
+Validar com npm test, lint, build e test:postgres/test:docker, incluindo um redeploy simulado com tarefas na fila e em execução.
