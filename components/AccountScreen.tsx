@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { REGRA_SENHA } from "@/lib/conta-comum";
 import { readJson, unavailableMessage } from "./StudioUI";
+import { ConnectionsBackground } from "./ConnectionsBackground";
 
 type Mode = "login" | "register" | "forgot-password" | "verify-email" | "reset-password" | "access";
 type User = { name: string; email: string; email_verified_at: string | null; beta_status: "pending" | "approved" | "blocked" };
@@ -108,8 +109,9 @@ export function AccountScreen({ mode, google = false }: { mode: Mode; google?: b
   const emailField = ["login", "register", "forgot-password"].includes(mode);
   const passwordField = ["login", "register", "reset-password"].includes(mode);
   const social = google && (mode === "login" || mode === "register");
-  return <main className="min-h-screen bg-bg flex items-center justify-center px-4 py-10">
-    <div className="w-full max-w-[440px]">
+  return <main className="relative isolate min-h-screen bg-bg flex items-center justify-center px-4 py-10">
+    {(mode === "login" || mode === "register") && <ConnectionsBackground />}
+    <div className="relative w-full max-w-[440px]">
       <div className="flex justify-center mb-6">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/brand/agentflows-logo.png" alt="Agentflows" width={184} height={40} className="h-10 w-auto" />

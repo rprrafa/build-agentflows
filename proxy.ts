@@ -14,7 +14,7 @@ function rotaPublica(pathname: string, metodo: string): boolean {
   if (pathname === "/mcp") return metodo === "POST" || metodo === "GET";
   if (pathname === "/api/health") return true;
   if (pathname === "/conta" || pathname === "/entrar") return true;
-  if (pathname === "/icon.svg" || /^\/brand\/[a-z-]+\.png$/.test(pathname)) return true;
+  if (pathname === "/icon.png" || pathname === "/apple-icon.png" || /^\/brand\/[a-z-]+\.png$/.test(pathname)) return true;
   if (pathname === "/webhook/whatsapp" || pathname === "/webhook/elevenlabs" || /^\/webhook\/flows\/[a-zA-Z0-9-]+$/.test(pathname)) return true;
   if (pathname.startsWith("/_next/")) return true;
   return false;
@@ -41,7 +41,7 @@ export async function proxy(request: NextRequest) {
 
   const publicAuth = ["/entrar", "/conta", "/acesso", "/verificar-email", "/recuperar-senha", "/redefinir-senha"];
   if (publicAuth.includes(pathname)) return withInvite(await permitir());
-  if (pathname.startsWith("/api/auth/") || pathname.startsWith("/_next/") || pathname === "/icon.svg" || pathname === "/api/health") return permitir();
+  if (pathname.startsWith("/api/auth/") || pathname.startsWith("/_next/") || pathname === "/icon.png" || pathname === "/apple-icon.png" || pathname === "/api/health") return permitir();
   // Public integrations keep their own token/owner validation in their handlers.
   if (rotaPublica(pathname, request.method)) return permitir();
   try {
