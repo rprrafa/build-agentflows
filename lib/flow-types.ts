@@ -5,6 +5,8 @@ import { MEMORY_DEFAULTS } from "./memory-settings";
 import type { QueueStatus } from "./queue-status";
 import { DEFAULT_DECISION_MODEL, defaultDecisionQuestions } from "./flow-decisions";
 export const DEFAULT_SYSTEM = "Você é um assistente cuidadoso. Responda em português.";
+// Instruções padrão da análise agêntica do bloco Base de conhecimento (regras em flow-retriever.ts).
+export const RETRIEVER_SYSTEM = "Analise os trechos recuperados das bases de conhecimento para responder à consulta. Avalie a relevância de cada trecho, descarte os que não ajudam, aponte contradições e lacunas e, se faltar informação, faça novas consultas com outros termos. Responda em português, citando apenas o que os trechos sustentam.";
 export const BLOCKS = {
   start: {
     label: "Início",
@@ -30,6 +32,11 @@ export const BLOCKS = {
     label: "Decisão",
     icon: "⋔",
     help: "Responde perguntas fechadas com um modelo de decisão e devolve as respostas em JSON.",
+  },
+  retriever: {
+    label: "Base de conhecimento",
+    icon: "⌕",
+    help: "Consulta as bases de conhecimento e devolve os trechos encontrados ou uma análise agêntica deles.",
   },
   state: {
     label: "Atualizar estado",
@@ -169,6 +176,8 @@ export function block(kind: Kind, id: string, x: number, y: number): Block {
         ? { value: "{{input}}", operator: "contains", compare: "urgente" }
         : kind === "decision"
           ? { model: DEFAULT_DECISION_MODEL, modelCredentialId: "", input: "{{input}}", questions: JSON.stringify(defaultDecisionQuestions()), minConfidence: "", outputFormat: "answers" }
+        : kind === "retriever"
+          ? { knowledgeBases: "[]", query: "{{input}}", outputFormat: "text", analysis: "", model: "", system: RETRIEVER_SYSTEM }
         : kind === "loop"
           ? { target: "", limit: "3", limitMessage: "" }
           : kind === "http"

@@ -5,9 +5,11 @@ import { KNOWLEDGE_STATUS, type KnowledgeBase } from "@/lib/knowledge-types";
 import { knowledgeSettings, MAX_KNOWLEDGE_BASES, MAX_KNOWLEDGE_DESCRIPTION, type KnowledgeBinding } from "@/lib/knowledge-settings";
 import { ToolSelect } from "./ToolSelect";
 import { Icon, IconButton, request } from "./StudioUI";
-export function KnowledgeAgentFields({ config, onChange }: {
+// retriever: no bloco Base de conhecimento a consulta vai a todas as bases e a descrição só orienta a análise agêntica.
+export function KnowledgeAgentFields({ config, onChange, retriever = false }: {
   config: Record<string, string>;
   onChange: (key: string, value: string) => void;
+  retriever?: boolean;
 }) {
   const fieldId = useId();
   const [bases, setBases] = useState<KnowledgeBase[]>([]),
@@ -32,7 +34,7 @@ export function KnowledgeAgentFields({ config, onChange }: {
       const parsed = JSON.parse(config.knowledgeBases);
       if (!Array.isArray(parsed) || parsed.some(row => !row || typeof row.baseId !== "string" || typeof row.description !== "string" || typeof row.references !== "boolean")) throw new Error();
       rows = parsed;
-    } else rows = knowledgeSettings(config).bases.map(row => ({
+    } else rows = knowledgeSettings(config, !retriever).bases.map(row => ({
       ...row,
       description: bases.find(base => base.id === row.baseId)?.description.slice(0, MAX_KNOWLEDGE_DESCRIPTION) || "Consulte esta base para responder perguntas sobre os documentos cadastrados nela.",
     }));
@@ -42,10 +44,10 @@ export function KnowledgeAgentFields({ config, onChange }: {
   return (
     <section className="knowledge-agent node-fields" aria-label="Conhecimento do bloco">
       <div className="knowledge-section-title">
-        <strong>Conhecimento</strong>
+        <strong>{retriever ? "Bases consultadas" : "Conhecimento"}</strong>
         <Link href="/knowledge" target="_blank" rel="noopener">Gerenciar bases</Link>
       </div>
-      <small>Adicione bases e descreva quando cada uma deve ser consultada. A IA escolhe as bases relevantes para a pergunta.</small>
+      <small>{retriever ? "A consulta do bloco é feita em todas as bases adicionadas." : "Adicione bases e descreva quando cada uma deve ser consultada. A IA escolhe as bases relevantes para a pergunta."}</small>
       {invalid && <p className="studio-error" role="alert">A lista de bases está inválida. Corrija a configuração do fluxo antes de continuar.</p>}
       {error && <p className="studio-error" role="alert">{error} <button type="button" onClick={() => setRefresh(refresh + 1)}>Tentar novamente</button></p>}
       {!loaded && !error && <small>Carregando bases…</small>}
@@ -76,12 +78,12 @@ export function KnowledgeAgentFields({ config, onChange }: {
           />
           {selected && selected.status !== "ready" && <small>Conclua a indexação desta base antes de consultá-la. <Link target="_blank" rel="noopener" href={`/knowledge/${selected.id}`}>Abrir base</Link></small>}
           <label>
-            Descrição do conhecimento <span aria-hidden="true">*</span>
-            <textarea aria-label={`Descrição do conhecimento ${index + 1}`} required rows={4} maxLength={MAX_KNOWLEDGE_DESCRIPTION} value={row.description} placeholder="Ex.: Políticas de cancelamento e reembolso. Consulte quando houver dúvidas sobre prazos, condições ou devolução de pagamentos." onChange={e => update(index, { description: e.target.value })} />
-            <small>Explique o conteúdo, por que ele é útil e quando a IA deve buscar nesta base.</small>
+            Descrição do conhecimento {!retriever && <span aria-hidden="true">*</span>}
+            <textarea aria-label={`Descrição do conhecimento ${index + 1}`} required={!retriever} rows={retriever ? 2 : 4} maxLength={MAX_KNOWLEDGE_DESCRIPTION} value={row.description} placeholder="Ex.: Políticas de cancelamento e reembolso. Consulte quando houver dúvidas sobre prazos, condições ou devolução de pagamentos." onChange={e => update(index, { description: e.target.value })} />
+            <small>{retriever ? "Opcional. Na análise agêntica, orienta quando refazer consultas nesta base." : "Explique o conteúdo, por que ele é útil e quando a IA deve buscar nesta base."}</small>
           </label>
           <div className="knowledge-binding-references">
-            <span id={referencesId}>Retornar documentos de origem<small>Acrescenta à resposta as referências encontradas nesta base.</small></span>
+            <span id={referencesId}>Retornar documentos de origem<small>{retriever ? "Inclui a fonte de cada trecho e as referências encontradas nesta base." : "Acrescenta à resposta as referências encontradas nesta base."}</small></span>
             <button type="button" role="switch" className="node-memory-switch" aria-labelledby={referencesId} aria-checked={row.references} onClick={() => update(index, { references: !row.references })}><span /></button>
           </div>
           <details>

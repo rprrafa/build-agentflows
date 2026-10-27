@@ -16,6 +16,7 @@ export const NODE_STYLE: Record<
   agent: style("#4DD0E1", "Agentes e IA"),
   condition: style("#FFB938", "Controle de fluxo"),
   decision: style("#F06292", "Agentes e IA"),
+  retriever: style("#b8bed1", "Agentes e IA"),
   state: style("#E4B7FF", "Dados e integrações"),
   http: style("#FF7F7F", "Dados e integrações"),
   tool: style("#d4a373", "Dados e integrações"),

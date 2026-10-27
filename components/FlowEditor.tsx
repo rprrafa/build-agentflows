@@ -1183,7 +1183,7 @@ export function FlowEditor({ id }: { id: string }) {
             </div>
           </div>
           <p>
-            {info === "condition" ? "Adicione critérios para criar saídas numeradas. O primeiro critério atendido define o caminho; a última saída recebe os demais casos." : info === "decision" ? "Devolve um JSON com a resposta de cada pergunta e pode guardar as respostas em variáveis. Para desviar o caminho, use uma Condição depois." : outputLabel(info, "yes")
+            {info === "condition" ? "Adicione critérios para criar saídas numeradas. O primeiro critério atendido define o caminho; a última saída recebe os demais casos." : info === "decision" ? "Devolve um JSON com a resposta de cada pergunta e pode guardar as respostas em variáveis. Para desviar o caminho, use uma Condição depois." : info === "retriever" ? "Busca a consulta em todas as bases escolhidas e devolve os trechos em texto ou JSON. Com a análise agêntica, um modelo de IA avalia os trechos, pode refazer consultas e devolve a análise. Pode encerrar o caminho ou seguir para o próximo bloco." : outputLabel(info, "yes")
               ? `Este bloco tem duas saídas (${outputLabel(info, "yes")} e ${outputLabel(info, "no")}). Conecte cada uma ao próximo passo.`
               : info === "loop"
                 ? "Repetir não tem setas de saída: escolha dentro dele o bloco para onde voltar e o máximo de passagens. Ao atingir o limite, entrega a mensagem configurada (ou o resultado anterior) e encerra."

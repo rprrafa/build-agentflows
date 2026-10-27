@@ -268,7 +268,7 @@ export async function knowledgeBaseUsages(id: string, sql?: Sql) {
   await readBase(sql, user.id, id);
   const { rows } = await sql.query<{ id: string; name: string; graph: Graph; published: Graph | null }>(`SELECT id,body->>'name' name,body->'graph' graph,body->'published' published FROM flows WHERE user_id=$1
     UNION ALL SELECT flow_id id,body->>'name' name,body->'graph' graph,NULL published FROM runs WHERE user_id=$1 AND status IN ('running','waiting')`, [user.id]);
-  return rows.filter((r) => [r.graph, r.published].some((g) => g?.nodes.some((n) => ["agent", "llm"].includes(n.data.kind) && knowledgeBaseIds(n.data.config).includes(id)))).map(({ id, name }) => ({ id, name }));
+  return rows.filter((r) => [r.graph, r.published].some((g) => g?.nodes.some((n) => ["agent", "llm", "retriever"].includes(n.data.kind) && knowledgeBaseIds(n.data.config).includes(id)))).map(({ id, name }) => ({ id, name }));
 }
 export async function deleteKnowledgeSource(baseId: string, id: string, token?: string) {
   await mutateKnowledge(baseId, async (sql, owner, base) => {

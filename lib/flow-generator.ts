@@ -6,9 +6,9 @@ import { layout, outputs } from "./flow-graph";
 export type Generated = { name: string; description: string; graph: Graph; summary?: string };
 export type GenerationPhase = "interpreting" | "planning" | "creating" | "repairing";
 export type GenerationEvent = { phase: GenerationPhase } | { result: Generated } | { error: string };
-// A Decisão depende de uma credencial TypeSafe escolhida pela pessoa; o gerador não a cria.
-type GeneratedKind = Exclude<Kind, "decision">;
-const KINDS = (Object.keys(BLOCKS) as Kind[]).filter((k): k is GeneratedKind => k !== "decision");
+// Decisão e Base de conhecimento dependem de credencial ou de bases da conta: o gerador não os oferece.
+type GeneratedKind = Exclude<Kind, "decision" | "retriever">;
+const KINDS = (Object.keys(BLOCKS) as Kind[]).filter((k): k is GeneratedKind => k !== "decision" && k !== "retriever");
 // Campos de configuração aceitos por tipo, para o modelo preencher além dos blocos e conexões.
 const FIELDS: Record<GeneratedKind, string> = {
   start: "state (JSON com valores de texto, opcional)",

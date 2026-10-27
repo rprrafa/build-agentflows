@@ -43,12 +43,12 @@ export function TraceDetails({ trace, kind, onClose }: { trace: Trace; kind?: Ki
     {trace.usage ? <div className="trace-token-breakdown"><span>Entrada: <strong>{count(trace.usage.input)}</strong></span><span>Saída: <strong>{count(trace.usage.output)}</strong></span>{trace.usage.cachedInput !== undefined && <span>Em cache: <strong>{count(trace.usage.cachedInput)}</strong></span>}{trace.usage.reasoning !== undefined && <span>Raciocínio: <strong>{count(trace.usage.reasoning)}</strong></span>}</div> : trace.type === "tool" ? <p className="trace-note">O consumo de tokens fica na etapa do agente que chamou esta ferramenta.</p> : trace.media?.length ? null : isModel ? <p className="trace-note">O consumo não foi informado pelo provedor ou não foi registrado nesta execução.</p> : null}
     {!!trace.media?.length && <p className="trace-note">{trace.media.map((request) => <span key={request.requestId}>{MEDIA_PROVIDERS.find((provider) => provider.id === request.provider)?.name} · {mediaModel(request.model)?.name || request.model} · solicitação <code>{request.requestId}</code>. </span>)}{cost === undefined ? "O provedor não informa o valor pela API; consulte a cobrança no painel dele com este identificador." : ""}</p>}
     {!!trace.knowledge?.available?.length && <section className="trace-knowledge">
-      <h3>Bases disponíveis como ferramentas</h3>
-      <p>O modelo recebeu estas bases e suas descrições. As chamadas realizadas aparecem separadamente nas etapas da execução.</p>
+      <h3>{kind === "retriever" ? "Bases consultadas pelo bloco" : "Bases disponíveis como ferramentas"}</h3>
+      <p>{kind === "retriever" ? "A consulta foi feita em todas estas bases; na análise agêntica, o modelo pôde refazê-la. Cada consulta aparece separadamente nas etapas da execução." : "O modelo recebeu estas bases e suas descrições. As chamadas realizadas aparecem separadamente nas etapas da execução."}</p>
       <ul>{trace.knowledge.available.map(base => <li key={base.baseId}><strong>{base.baseName}</strong><small>{base.description}</small></li>)}</ul>
       <p>{trace.knowledge.count} trecho(s) recuperado(s) em {trace.knowledge.bases?.length || 0} base(s).</p>
     </section>}
-    {trace.instructions && <details className="trace-instructions"><summary>{kind === "agent" ? "Instruções do agente" : "Instruções"}</summary><pre>{trace.instructions}</pre></details>}
+    {trace.instructions && <details className="trace-instructions"><summary>{kind === "agent" ? "Instruções do agente" : kind === "retriever" ? "Instruções da análise" : "Instruções"}</summary><pre>{trace.instructions}</pre></details>}
     {trace.memory && <details className="trace-instructions trace-memory"><summary>Memória</summary><pre>{pretty(trace.memory)}</pre></details>}
     <div className="trace-payloads">
       <section><h3>Entrada</h3>{trace.turns?.length ? <Turns turns={trace.turns} notes={trace.notes} /> : <><Payload text={trace.input} empty="Entrada não registrada nesta execução." />{trace.notes && <p className="trace-note">{trace.notes}</p>}</>}</section>
