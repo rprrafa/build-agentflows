@@ -70,6 +70,7 @@ export type IconName =
   | "sun"
   | "logout"
   | "book"
+  | "skill"
   | "magnet"
   | "artboard"
   | "info"
@@ -212,6 +213,7 @@ const paths: Record<string, ReactNode> = {
   book: (
     <path d="M12 5C8 2 4 3 2 4v16c4-2 7-1 10 1 3-2 6-3 10-1V4c-2-1-6-2-10 1v16" />
   ),
+  skill: <><path d="M8 3h11a2 2 0 0 1 2 2v2h-5" /><path d="M16 7v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2h8v2a2 2 0 0 0 2 2" /><path d="M8 3a2 2 0 0 0-2 2v12M10 9h3M10 13h3" /></>,
   magnet: (
     <path d="M4 3h4v9a4 4 0 0 0 8 0V3h4v9a8 8 0 0 1-16 0zM4 8h4m8 0h4" />
   ),

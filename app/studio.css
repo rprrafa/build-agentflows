@@ -4236,3 +4236,55 @@
 .decision-option { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto; gap: 8px; align-items: center; }
 .decision-option:has(> strong) { grid-template-columns: 48px minmax(0, 1fr); }
 @media (max-width: 560px) { .decision-option { grid-template-columns: minmax(0, 1fr) auto; } .decision-option > input:nth-of-type(2) { grid-column: 1 / -1; grid-row: 2; } .decision-option:has(> strong) > input { grid-column: 2; grid-row: 1; } }
+
+/* Habilidades do Agente (SkillPicker) e registro de habilidades carregadas no chat. */
+.skill-picker { padding: 20px 0; margin-top: 8px; border-top: 1px solid var(--studio-line); display: flex; flex-direction: column; gap: 12px; }
+.skill-picker-title { display: flex; align-items: center; gap: 8px; }
+.skill-picker-title > strong { font-size: 15px; }
+.skill-info { position: relative; display: inline-grid; place-items: center; color: var(--studio-muted); cursor: help; border-radius: 50%; }
+.skill-info:focus-visible { outline: 2px solid var(--studio-primary); outline-offset: 2px; }
+.skill-info > [role="tooltip"] { position: absolute; z-index: 30; top: calc(100% + 10px); left: -12px; width: min(340px, calc(100vw - 96px)); padding: 14px 16px; border: 1px solid var(--studio-line); border-radius: 14px; background: var(--studio-panel); color: var(--studio-ink); box-shadow: var(--studio-shadow); font-size: 12px; font-weight: 400; line-height: 1.6; display: none; pointer-events: none; }
+.skill-info:hover > [role="tooltip"], .skill-info:focus-visible > [role="tooltip"] { display: block; }
+.skill-add { position: relative; display: inline-flex; margin-left: auto; border: 1px solid var(--studio-line); border-radius: 12px; background: var(--studio-panel); }
+.skill-add > button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--studio-ink); font: inherit; font-size: 13px; cursor: pointer; padding: 8px 12px; border-radius: 11px; }
+.skill-add > .skill-add-toggle { padding: 8px 9px; border-left: 1px solid var(--studio-line); border-radius: 0 11px 11px 0; }
+.skill-add > .skill-add-toggle svg { transform: rotate(90deg); }
+.skill-add > button:hover:not(:disabled) { background: var(--studio-bg); }
+.skill-add > button:disabled { opacity: .55; cursor: default; }
+.skill-menu { position: absolute; z-index: 25; top: calc(100% + 6px); right: 0; min-width: 220px; max-width: min(320px, 80vw); max-height: 300px; overflow-y: auto; padding: 6px; border: 1px solid var(--studio-line); border-radius: 10px; background: var(--studio-panel); box-shadow: var(--studio-shadow); }
+.skill-menu > button { display: flex; align-items: center; gap: 9px; width: 100%; padding: 9px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--studio-ink); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.skill-menu > button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skill-menu > button:hover { background: var(--studio-bg); }
+.skill-menu > button.danger { color: #c2364a; }
+.skill-menu-heading { display: block; padding: 8px 10px 4px; color: var(--studio-muted); font-size: 11px; }
+.skill-notice { margin: 0; color: var(--studio-muted); font-size: 12px; }
+.skill-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.skill-card { position: relative; display: flex; align-items: center; gap: 4px; padding-right: 8px; border: 1px solid var(--studio-line); border-radius: 14px; background: var(--studio-panel); }
+.skill-card-main { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; padding: 14px 10px 14px 16px; border: 0; border-radius: 13px; background: transparent; color: var(--studio-ink); font: inherit; text-align: left; }
+button.skill-card-main { cursor: pointer; }
+button.skill-card-main:hover { background: var(--studio-bg); }
+.skill-card-main > svg:first-child { flex-shrink: 0; color: var(--studio-muted); }
+.skill-card-main > span { display: grid; gap: 3px; min-width: 0; flex: 1; }
+.skill-card-main strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skill-card-main small { color: var(--studio-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skill-card-main > svg:last-child { flex-shrink: 0; color: var(--studio-muted); }
+.skill-card.missing { border-style: dashed; }
+.skill-card-actions { position: relative; }
+.skill-card-more { display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 8px; background: transparent; color: var(--studio-muted); cursor: pointer; }
+.skill-card-more:hover, .skill-card-more[aria-expanded="true"] { background: var(--studio-primary-soft); color: var(--studio-primary); }
+.skill-tokens { color: var(--studio-muted); font-size: 11px; }
+.skill-dialog-description { margin: 0 0 16px; color: var(--studio-muted); font-size: 13px; line-height: 1.6; }
+.skill-dialog-info { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0 0 18px; }
+.skill-dialog-info div { padding: 10px 12px; border: 1px solid var(--studio-line); border-radius: 10px; background: var(--studio-bg); }
+.skill-dialog-info dt { color: var(--studio-muted); font-size: 11px; margin-bottom: 4px; }
+.skill-dialog-info dd { margin: 0; color: var(--studio-ink); font-size: 13px; font-weight: 600; }
+.skill-dialog h3 { font-size: 12px; margin: 16px 0 8px; }
+.skill-dialog-files { margin: 0; padding-left: 18px; font-size: 12px; color: var(--studio-ink); }
+.skill-dialog-body { padding: 14px 18px; border: 1px solid var(--studio-line); border-radius: 10px; background: var(--studio-bg); max-height: 50vh; overflow: auto; }
+.skill-dialog-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+.skill-dialog-actions small { color: var(--studio-muted); font-size: 11px; }
+.chat-evidence-badge .chat-evidence-tokens { color: var(--studio-muted); white-space: nowrap; }
+.trace-skills ul { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
+.trace-skills li { display: grid; gap: 2px; }
+.trace-skills small { color: var(--studio-muted); }
+@media (max-width: 600px) { .skill-dialog-info { grid-template-columns: 1fr; } .skill-card-main { padding: 12px 8px 12px 12px; gap: 10px; } }

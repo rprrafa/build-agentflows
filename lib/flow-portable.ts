@@ -1,10 +1,10 @@
 // Exportação genérica de fluxos: o arquivo compartilhado entre contas não leva identificadores que só
-// existem na conta de origem (credenciais, bases de conhecimento, subfluxos, contas conectadas).
+// existem na conta de origem (credenciais, bases de conhecimento, habilidades, subfluxos, contas conectadas).
 // Aplicado ao exportar e ao importar, para arquivos antigos também entrarem sem "não encontrada nesta conta".
 import type { Graph } from "./flow-types";
 
 /** Chaves do config de um bloco que apontam para registros da conta. */
-export const ACCOUNT_CONFIG_KEYS = ["modelCredentialId", "knowledgeBases", "knowledgeBase"] as const;
+export const ACCOUNT_CONFIG_KEYS = ["modelCredentialId", "knowledgeBases", "knowledgeBase", "skills"] as const;
 /** Parâmetros de cartões de ferramenta que apontam para registros da conta. */
 export const ACCOUNT_CARD_PARAMS = ["flowId", "connectedAccountId"] as const;
 

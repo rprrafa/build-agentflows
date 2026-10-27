@@ -1,4 +1,5 @@
 import { modelSettings } from "./ai-providers";
+import { skillIds } from "./skill-settings";
 import { conditionCriteria, COMPARISONS } from "./flow-conditions";
 import { decisionQuestions, validateDecisionConfig } from "./flow-decisions";
 import { memorySettings } from "./memory-settings";
@@ -68,6 +69,7 @@ export function validateGraph(value: unknown, executable = false): Graph {
     }
     if (n.data.kind === "agent") {
       try { validateToolCards(n.data.config.toolCards); } catch (error) { throw new FlowError((error as Error).message); }
+      try { skillIds(n.data.config); } catch (error) { throw new FlowError((error as Error).message); }
     }
     ids.add(n.id);
   }

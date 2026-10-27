@@ -10,6 +10,7 @@ import { ReferenceField, type Reference } from "./ReferenceField";
 import { loopTargets } from "@/lib/flow-graph";
 import { BUILT_IN_ALIASES, nodeAlias } from "@/lib/reference-display";
 import { ToolPicker } from "./ToolPicker";
+import { SkillPicker } from "./SkillPicker";
 import { ModelPicker } from "./ModelPicker";
 import { memorySettings } from "@/lib/memory-settings";
 import { isMediaModel, MEDIA_PROMPT, validateMediaConfig } from "@/lib/media-models";
@@ -426,6 +427,7 @@ export function NodeDialog({
             )}
           </div>
         ))}
+        {k === "agent" && !media && <SkillPicker value={c.skills || ""} onChange={(value) => change("skills", value)} />}
         {(k === "agent" || k === "llm") && !media && <KnowledgeAgentFields config={c} onChange={change} />}
         {expanded && (k === "agent" || k === "llm") && (
           <Modal title={media ? "PROMPT" : "Instruções"} className="instructions-modal" onClose={() => setExpanded(false)}>

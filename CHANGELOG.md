@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## 0.53.0 — 27/10/2026
+
+- Habilidades (skills) no Agente: "Adicionar" recebe um SKILL.md ou um .zip com a pasta da habilidade (pasta com o mesmo nome do `name` do SKILL.md), no formato aberto Agent Skills. O cabeçalho YAML precisa de `name` (até 64 caracteres, minúsculas, números e hífens) e `description` (até 1024). As habilidades ficam na conta, podem ser reutilizadas em outros agentes, e enviar de novo o mesmo `name` atualiza a habilidade.
+- Carregamento sob demanda: o modelo recebe só o nome e a descrição de cada habilidade e chama `usar_habilidade` quando a tarefa pede; os arquivos de texto do pacote são lidos pela mesma ferramenta, em partes, só quando necessários. Repetir um carregamento devolve um aviso curto (sem reenviar o conteúdo) e, depois de três repetições ou do limite de chamadas da etapa, o modelo é orientado a responder com o que já tem. Nomes inventados são recusados com a lista certa.
+- O chat de teste mostra "Habilidades carregadas" com a estimativa de tokens de cada carregamento e do catálogo; o modal da etapa lista quais habilidades estavam disponíveis e quais foram carregadas. O consumo real continua em Tokens.
+- Habilidade em uso não pode ser excluída; habilidade removida da conta impede a execução antes de chamar o modelo. A exportação genérica não leva as habilidades, que são da conta.
+
 ## 0.52.0 — 21/10/2026
 
 - WhatsApp com conversa por pessoa: cada mensagem entra numa sessão do número de quem escreveu (guardada como hash, sem o telefone em claro), e as respostas anteriores dessa pessoa viram o histórico, como na sessão do endereço publicado. A memória dos blocos LLM e Agente passa a funcionar no canal, e duas pessoas falando com o mesmo número não se misturam mais.

@@ -103,6 +103,10 @@ export type Trace = {
   media?: { provider: string; model: string; requestId: string }[];
   // Amount charged in US dollars, only when the provider reports it (e.g. OpenRouter usage.cost).
   cost?: number;
+  // Habilidade carregada por esta chamada de ferramenta (tokens estimados do conteúdo entregue ao modelo).
+  skill?: { name: string; file?: string; start?: number; tokens: number; repeated?: boolean };
+  // Habilidades do Agente nesta etapa: catálogo sempre enviado (tokens estimados) e conteúdos carregados sob demanda.
+  skills?: { catalogTokens: number; available: { name: string; description: string }[]; loaded: { name: string; file?: string; start?: number; tokens: number }[] };
   knowledge?: { chunks?: KnowledgeReference[]; baseId?: string; count: number; references: boolean; available?: { baseId: string; baseName: string; description: string }[]; bases?: { baseId: string; baseName: string; count: number; references: boolean }[] };
   type?: "step" | "tool";
   status?: "running" | "completed" | "failed";

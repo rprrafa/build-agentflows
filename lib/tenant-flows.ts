@@ -1,4 +1,5 @@
 import { settleChannelDelivery } from "./channel-flows";
+import { skillIds } from "./skill-settings";
 import { randomUUID } from "node:crypto";
 import { currentTenant } from "./tenant-context";
 import { currentFlow, FlowError, normalizeFlowUpdate, validateGraph } from "./flow-store";
@@ -19,6 +20,11 @@ async function validateReferences(sql: Sql, owner: string, graph: Graph) {
   const subflows = new Set(graph.nodes.flatMap((node) => readToolCards(node.data.config.tools || "", node.data.config.toolCards).map((card) => card.params?.flowId).filter((id): id is string => !!id)));
   for (const id of subflows) {
     if (!(await sql.query("SELECT 1 FROM flows WHERE user_id=$1 AND id=$2", [owner, id])).rows.length) throw new FlowError("Subfluxo não encontrado nesta conta.", 404);
+  }
+  const skills = new Set(graph.nodes.flatMap((node) => node.data.kind === "agent" ? skillIds(node.data.config) : []));
+  if (skills.size) {
+    const { rows } = await sql.query("SELECT id FROM skills WHERE user_id=$1 AND id=ANY($2::text[])", [owner, [...skills]]);
+    if (rows.length !== skills.size) throw new FlowError("Habilidade não encontrada nesta conta.", 404);
   }
   for (const node of graph.nodes) if (["agent", "llm"].includes(node.data.kind)) {
     for (const { baseId } of knowledgeSettings(node.data.config).bases) {

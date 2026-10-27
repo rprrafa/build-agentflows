@@ -40,13 +40,21 @@ export function TraceDetails({ trace, kind, onClose }: { trace: Trace; kind?: Ki
       <div><span>Tokens{trace.usage?.partial ? " (parcial)" : ""}</span><strong>{trace.usage ? count(trace.usage.total) : trace.type === "tool" || !isModel || trace.media?.length ? "Não se aplica" : "Não informado"}</strong></div>
       {cost !== undefined && <div><span>Custo{trace.usage?.partial ? " (parcial)" : ""}</span><strong title="Valor informado pelo provedor">{formatCost(cost)}</strong></div>}
     </div>
-    {trace.usage ? <div className="trace-token-breakdown"><span>Entrada: <strong>{count(trace.usage.input)}</strong></span><span>Saída: <strong>{count(trace.usage.output)}</strong></span>{trace.usage.cachedInput !== undefined && <span>Em cache: <strong>{count(trace.usage.cachedInput)}</strong></span>}{trace.usage.reasoning !== undefined && <span>Raciocínio: <strong>{count(trace.usage.reasoning)}</strong></span>}</div> : trace.type === "tool" ? <p className="trace-note">O consumo de tokens fica na etapa do agente que chamou esta ferramenta.</p> : trace.media?.length ? null : isModel ? <p className="trace-note">O consumo não foi informado pelo provedor ou não foi registrado nesta execução.</p> : null}
+    {trace.skill ? <p className="trace-note">{trace.skill.repeated ? "Conteúdo já carregado nesta etapa: o modelo recebeu só um aviso curto, sem repetir as instruções" : `Conteúdo entregue ao modelo: ≈ ${count(trace.skill.tokens)} tokens (estimativa de 4 caracteres por token)`}. O consumo real fica na etapa do agente que carregou a habilidade.</p> : trace.usage ? <div className="trace-token-breakdown"><span>Entrada: <strong>{count(trace.usage.input)}</strong></span><span>Saída: <strong>{count(trace.usage.output)}</strong></span>{trace.usage.cachedInput !== undefined && <span>Em cache: <strong>{count(trace.usage.cachedInput)}</strong></span>}{trace.usage.reasoning !== undefined && <span>Raciocínio: <strong>{count(trace.usage.reasoning)}</strong></span>}</div> : trace.type === "tool" ? <p className="trace-note">O consumo de tokens fica na etapa do agente que chamou esta ferramenta.</p> : trace.media?.length ? null : isModel ? <p className="trace-note">O consumo não foi informado pelo provedor ou não foi registrado nesta execução.</p> : null}
     {!!trace.media?.length && <p className="trace-note">{trace.media.map((request) => <span key={request.requestId}>{MEDIA_PROVIDERS.find((provider) => provider.id === request.provider)?.name} · {mediaModel(request.model)?.name || request.model} · solicitação <code>{request.requestId}</code>. </span>)}{cost === undefined ? "O provedor não informa o valor pela API; consulte a cobrança no painel dele com este identificador." : ""}</p>}
     {!!trace.knowledge?.available?.length && <section className="trace-knowledge">
       <h3>Bases disponíveis como ferramentas</h3>
       <p>O modelo recebeu estas bases e suas descrições. As chamadas realizadas aparecem separadamente nas etapas da execução.</p>
       <ul>{trace.knowledge.available.map(base => <li key={base.baseId}><strong>{base.baseName}</strong><small>{base.description}</small></li>)}</ul>
       <p>{trace.knowledge.count} trecho(s) recuperado(s) em {trace.knowledge.bases?.length || 0} base(s).</p>
+    </section>}
+    {trace.skills && <section className="trace-knowledge trace-skills">
+      <h3>Habilidades</h3>
+      <p>O modelo recebeu o nome e a descrição de cada habilidade (≈ {count(trace.skills.catalogTokens)} tokens em cada chamada) e carregou o conteúdo só quando precisou. Valores estimados; o consumo real está em Tokens.</p>
+      <ul>{trace.skills.available.map(skill => {
+        const loads = trace.skills!.loaded.filter(load => load.name === skill.name);
+        return <li key={skill.name}><strong>{skill.name}</strong><small>{loads.length ? "Carregada: " + loads.map(load => `${load.file || "SKILL.md"}${load.start ? ` (a partir de ${count(load.start)})` : ""} ≈ ${count(load.tokens)} tokens`).join(" · ") : "Não carregada nesta etapa"}</small></li>;
+      })}</ul>
     </section>}
     {trace.instructions && <details className="trace-instructions"><summary>{kind === "agent" ? "Instruções do agente" : "Instruções"}</summary><pre>{trace.instructions}</pre></details>}
     {trace.memory && <details className="trace-instructions trace-memory"><summary>Memória</summary><pre>{pretty(trace.memory)}</pre></details>}

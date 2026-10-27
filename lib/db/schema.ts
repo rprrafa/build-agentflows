@@ -117,6 +117,12 @@ export const attachments = pgTable("attachments", {
 export const attachmentBlobs = pgTable("attachment_blobs", {
   user_id: uuid("user_id").notNull(), id: text("id").notNull(), data: bytes("data").notNull(),
 }, (t) => [primaryKey({ columns: [t.user_id, t.id] }), foreignKey({ columns: [t.user_id, t.id], foreignColumns: [attachments.user_id, attachments.id] }).onDelete("cascade"), check("attachment_blobs_size", sql`octet_length(${t.data}) BETWEEN 1 AND 10485760`)]);
+// Habilidades (skills) da conta: SKILL.md e arquivos de texto do pacote; os Agentes guardam só os ids em config.skills.
+export const skills = pgTable("skills", {
+  user_id: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }), id: text("id").notNull(), name: text("name").notNull(),
+  body: jsonb("body").notNull(), updated_at: time("updated_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.user_id, t.id] }), uniqueIndex("skills_name").on(t.user_id, t.name),
+  check("skills_body", sql`${t.body}->>'id'=${t.id} AND ${t.body}->>'name'=${t.name}`), check("skills_size", sql`octet_length(${t.body}::text)<=4194304`)]);
 export const jobs = pgTable("jobs", {
   id: uuid("id").primaryKey(), user_id: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   kind: text("kind").notNull(), resource_id: text("resource_id").notNull(), run_id: text("run_id"), base_id: text("base_id"), source_id: text("source_id"),
