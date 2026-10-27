@@ -418,6 +418,8 @@ export function Modal({
       className={"studio-modal" + (wide ? " wide" : "") + (title === undefined ? " headless" : "") + (className ? " " + className : "")}
       aria-label={title === undefined ? label : undefined}
       onCancel={(e) => {
+        // O cancel de um <input type="file"> (fechar o seletor de arquivos) também chega aqui pelo React: só o do diálogo fecha.
+        if (e.target !== e.currentTarget) return;
         e.preventDefault();
         e.stopPropagation();
         onClose();

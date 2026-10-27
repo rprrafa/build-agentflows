@@ -1,6 +1,6 @@
 {
   "name": "build-agentflows",
-  "version": "0.55.1",
+  "version": "0.55.2",
   "private": true,
   "engines": {
     "node": ">=24.22.1"

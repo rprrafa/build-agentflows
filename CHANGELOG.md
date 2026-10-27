@@ -1,5 +1,10 @@
 # Histórico de versões
 
+## 0.55.2 — 27/10/2026
+
+- Habilidades do Agente: o botão "Adicionar habilidade" segue o padrão de "Adicionar ferramenta" e "Adicionar base de conhecimento" (largura total, no fim da seção). Com habilidades da conta ainda fora do agente, ele abre o menu para enviar um arquivo ou escolher uma delas; sem elas, abre direto o seletor de arquivos.
+- Cancelar o seletor de arquivos não fecha mais o diálogo do bloco (nem outros diálogos com envio de arquivo): o cancelamento do campo de arquivo chegava ao diálogo como se fosse o Esc.
+
 ## 0.55.1 — 27/10/2026
 
 - Segurança: a imagem Docker (web e worker) passa a usar `node:24.22.1-alpine`, fixada, em vez da tag móvel `node:24-alpine`. A 24.22.1 corrige a CVE-2026-111497 (Node2Shell), uma escrita fora dos limites no decodificador Brotli do Node. O `fetch` descomprime `Content-Encoding: br` automaticamente, e o app busca URLs escolhidas pelas contas (fontes das bases, mídia, ferramentas OpenAPI e internas, servidores MCP), então um servidor malicioso podia derrubar ou comprometer o processo. `package.json` declara `engines` (>=24.22.1) e `.nvmrc` fixa a versão local.

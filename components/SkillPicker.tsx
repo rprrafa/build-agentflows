@@ -98,22 +98,6 @@ export function SkillPicker({ value, onChange }: { value: string; onChange: (val
           <Icon name="info" size={16} />
           <span role="tooltip" id={tipId}>As habilidades dão ao seu agente recursos especializados e reutilizáveis, empacotados como um arquivo SKILL.md ou um .zip com uma pasta de habilidade de nível superior que contém o manifesto SKILL.md e arquivos relacionados. O agente recebe só o nome e a descrição e carrega o conteúdo quando a tarefa pede.</span>
         </span>
-        <div className="skill-add" ref={addRef}>
-          <button type="button" className="skill-add-main" onClick={pick} disabled={uploading || ids.length >= MAX_AGENT_SKILLS}>
-            {uploading ? <span className="studio-spinner" /> : <Icon name="plus" size={16} />}{uploading ? "Enviando…" : "Adicionar"}
-          </button>
-          <button type="button" className="skill-add-toggle" aria-haspopup="menu" aria-expanded={menu} aria-label="Mais opções para adicionar habilidades" onClick={() => setMenu(!menu)} disabled={uploading || ids.length >= MAX_AGENT_SKILLS}>
-            <Icon name="chevron" size={14} />
-          </button>
-          {menu && <div className="skill-menu" role="menu">
-            <button type="button" role="menuitem" onClick={pick}><Icon name="upload" size={15} />Enviar SKILL.md ou .zip</button>
-            {!!available.length && <span className="skill-menu-heading">Habilidades da conta</span>}
-            {available.map((skill) => <button type="button" role="menuitem" key={skill.id} onClick={() => { setMenu(false); save([...ids, skill.id]); }} title={skill.description}>
-              <Icon name="skill" size={15} /><span>{skill.name}</span>
-            </button>)}
-            {skills === null && <span className="skill-menu-heading">Carregando habilidades…</span>}
-          </div>}
-        </div>
       </div>
       <input ref={fileInput} type="file" hidden accept=".md,.zip,text/markdown,application/zip" onChange={(e) => { const file = e.target.files?.[0]; if (file) void upload(file); }} />
       {error && <p className="studio-error" role="alert">{error}</p>}
@@ -140,6 +124,18 @@ export function SkillPicker({ value, onChange }: { value: string; onChange: (val
         </li>)}
       </ul>}
       {!!chosen.length && <small className="skill-tokens">Em toda chamada: {tokens(fixed)} (nomes e descrições). Sob demanda: até {tokens(onDemand)} quando o agente carrega os SKILL.md, mais os arquivos que ele ler.</small>}
+      <div className="skill-add" ref={addRef}>
+        <button type="button" className="studio-button tool-add-button" aria-haspopup={available.length ? "menu" : undefined} aria-expanded={available.length ? menu : undefined} disabled={uploading || ids.length >= MAX_AGENT_SKILLS} onClick={() => available.length ? setMenu(!menu) : pick()}>
+          {uploading ? <span className="studio-spinner" /> : <Icon name="plus" size={16} />}{uploading ? "Enviando…" : "Adicionar habilidade"}
+        </button>
+        {menu && <div className="skill-menu" role="menu">
+          <button type="button" role="menuitem" onClick={pick}><Icon name="upload" size={15} />Enviar SKILL.md ou .zip</button>
+          <span className="skill-menu-heading">Habilidades da conta</span>
+          {available.map((skill) => <button type="button" role="menuitem" key={skill.id} onClick={() => { setMenu(false); save([...ids, skill.id]); }} title={skill.description}>
+            <Icon name="skill" size={15} /><span>{skill.name}</span>
+          </button>)}
+        </div>}
+      </div>
       {viewing && <Modal title={viewing.name} wide className="skill-dialog" onClose={() => !deleting && setViewing(null)}>
         <p className="skill-dialog-description">{viewing.description}</p>
         <dl className="skill-dialog-info">
