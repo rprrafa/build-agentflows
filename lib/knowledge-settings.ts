@@ -15,7 +15,8 @@ function validateLimits(topK?: number, minScore?: number) {
   ) throw new Error("Use de 1 a 20 resultados e pontuação entre -1 e 1 para a base de conhecimento.");
 }
 
-export function knowledgeSettings(config: Record<string, string>) {
+// O Agente/LLM escolhe a base pela descrição; no bloco Base de conhecimento ela é opcional (requireDescription false).
+export function knowledgeSettings(config: Record<string, string>, requireDescription = true) {
   // An explicit empty array removes every binding, including a legacy selection.
   if (config.knowledgeBases !== undefined) {
     let rows: unknown;
@@ -29,7 +30,7 @@ export function knowledgeSettings(config: Record<string, string>) {
         throw new Error(`Selecione a base de conhecimento ${index + 1}.`);
       if (seen.has(row.baseId)) throw new Error("Selecione cada base de conhecimento apenas uma vez por bloco.");
       seen.add(row.baseId);
-      if (typeof row.description !== "string" || !row.description.trim() || row.description.length > MAX_KNOWLEDGE_DESCRIPTION)
+      if (typeof row.description !== "string" || (requireDescription && !row.description.trim()) || row.description.length > MAX_KNOWLEDGE_DESCRIPTION)
         throw new Error(`Descreva quando consultar a base ${index + 1}, em até ${MAX_KNOWLEDGE_DESCRIPTION} caracteres.`);
       if (typeof row.references !== "boolean") throw new Error("Escolha se deseja retornar as referências de cada base.");
       validateLimits(row.topK, row.minScore);
@@ -53,5 +54,5 @@ export function knowledgeSettings(config: Record<string, string>) {
 
 /** Includes old flows and new cards; used to protect draft and published references. */
 export function knowledgeBaseIds(config: Record<string, string>): string[] {
-  return knowledgeSettings(config).bases.map(row => row.baseId);
+  return knowledgeSettings(config, false).bases.map(row => row.baseId);
 }

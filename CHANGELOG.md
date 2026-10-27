@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## 0.53.0 — 27/10/2026
+
+- Novo bloco **Base de conhecimento** (Agentes e IA), inspirado no Retriever do Flowise: escolhe uma ou mais bases geradas, faz a Consulta (padrão `{{Conversa}}`) em todas e devolve os trechos em Texto (com a fonte das bases que retornam documentos de origem e as referências) ou em JSON (consulta, trechos com base, fonte, página e similaridade). Cada consulta aparece como "Conhecimento: nome da base" nas etapas.
+- **Análise agêntica dos trechos** (opcional no bloco): um modelo de IA, escolhido como no LLM e no Agente, recebe os trechos como dados, pode refazer consultas nas mesmas bases com outros termos e devolve a análise no lugar dos trechos (no JSON, em `analise`). As instruções da análise são editáveis.
+- O bloco pode atualizar variáveis do Início ao concluir (como o Agente e o LLM), encerrar o caminho ou seguir para o próximo bloco. A descrição de cada base é opcional nele. Bases usadas pelo bloco ficam protegidas contra exclusão e a exportação genérica remove a seleção, como no Agente.
+
 ## 0.52.0 — 21/10/2026
 
 - WhatsApp com conversa por pessoa: cada mensagem entra numa sessão do número de quem escreveu (guardada como hash, sem o telefone em claro), e as respostas anteriores dessa pessoa viram o histórico, como na sessão do endereço publicado. A memória dos blocos LLM e Agente passa a funcionar no canal, e duas pessoas falando com o mesmo número não se misturam mais.
