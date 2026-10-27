@@ -1,11 +1,17 @@
 # Histórico de versões
 
-## 0.53.0 — 27/10/2026
+## 0.54.0 — 27/10/2026
 
 - Habilidades (skills) no Agente: "Adicionar" recebe um SKILL.md ou um .zip com a pasta da habilidade (pasta com o mesmo nome do `name` do SKILL.md), no formato aberto Agent Skills. O cabeçalho YAML precisa de `name` (até 64 caracteres, minúsculas, números e hífens) e `description` (até 1024). As habilidades ficam na conta, podem ser reutilizadas em outros agentes, e enviar de novo o mesmo `name` atualiza a habilidade.
 - Carregamento sob demanda: o modelo recebe só o nome e a descrição de cada habilidade e chama `usar_habilidade` quando a tarefa pede; os arquivos de texto do pacote são lidos pela mesma ferramenta, em partes, só quando necessários. Repetir um carregamento devolve um aviso curto (sem reenviar o conteúdo) e, depois de três repetições ou do limite de chamadas da etapa, o modelo é orientado a responder com o que já tem. Nomes inventados são recusados com a lista certa.
 - O chat de teste mostra "Habilidades carregadas" com a estimativa de tokens de cada carregamento e do catálogo; o modal da etapa lista quais habilidades estavam disponíveis e quais foram carregadas. O consumo real continua em Tokens.
 - Habilidade em uso não pode ser excluída; habilidade removida da conta impede a execução antes de chamar o modelo. A exportação genérica não leva as habilidades, que são da conta.
+
+## 0.53.0 — 27/10/2026
+
+- Novo bloco **Base de conhecimento** (Agentes e IA), inspirado no Retriever do Flowise: escolhe uma ou mais bases geradas, faz a Consulta (padrão `{{Conversa}}`) em todas e devolve os trechos em Texto (com a fonte das bases que retornam documentos de origem e as referências) ou em JSON (consulta, trechos com base, fonte, página e similaridade). Cada consulta aparece como "Conhecimento: nome da base" nas etapas.
+- **Análise agêntica dos trechos** (opcional no bloco): um modelo de IA, escolhido como no LLM e no Agente, recebe os trechos como dados, pode refazer consultas nas mesmas bases com outros termos e devolve a análise no lugar dos trechos (no JSON, em `analise`). As instruções da análise são editáveis.
+- O bloco pode atualizar variáveis do Início ao concluir (como o Agente e o LLM), encerrar o caminho ou seguir para o próximo bloco. A descrição de cada base é opcional nele. Bases usadas pelo bloco ficam protegidas contra exclusão e a exportação genérica remove a seleção, como no Agente.
 
 ## 0.52.0 — 21/10/2026
 

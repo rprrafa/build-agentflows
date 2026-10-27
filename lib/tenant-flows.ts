@@ -26,8 +26,8 @@ async function validateReferences(sql: Sql, owner: string, graph: Graph) {
     const { rows } = await sql.query("SELECT id FROM skills WHERE user_id=$1 AND id=ANY($2::text[])", [owner, [...skills]]);
     if (rows.length !== skills.size) throw new FlowError("Habilidade não encontrada nesta conta.", 404);
   }
-  for (const node of graph.nodes) if (["agent", "llm"].includes(node.data.kind)) {
-    for (const { baseId } of knowledgeSettings(node.data.config).bases) {
+  for (const node of graph.nodes) if (["agent", "llm", "retriever"].includes(node.data.kind)) {
+    for (const { baseId } of knowledgeSettings(node.data.config, node.data.kind !== "retriever").bases) {
       if (!(await sql.query("SELECT 1 FROM knowledge_bases WHERE user_id=$1 AND id=$2", [owner, baseId])).rows.length) throw new FlowError("Base de conhecimento não encontrada nesta conta.", 404);
     }
   }

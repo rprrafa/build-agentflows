@@ -59,6 +59,7 @@ export type IconName =
   | "agent"
   | "condition"
   | "decision"
+  | "retriever"
   | "state"
   | "http"
   | "tool"
@@ -181,6 +182,14 @@ const paths: Record<string, ReactNode> = {
     <>
       <path d="M12 3v7m0 0-7 6m7-6 7 6M5 16v5m14-5v5m-7-11v11" />
       <circle cx="12" cy="3.5" r="1.5" />
+    </>
+  ),
+  retriever: (
+    <>
+      <ellipse cx="10" cy="5" rx="7" ry="2.5" />
+      <path d="M3 5v12c0 1.4 3.1 2.5 7 2.5M17 5v4M3 11c0 1.4 3.1 2.5 7 2.5" />
+      <circle cx="17" cy="16" r="3" />
+      <path d="m19.2 18.2 2.3 2.3" />
     </>
   ),
   state: <path d="M4 5h16M4 12h16M4 19h16M8 3v4m8 3v4M8 17v4" />,

@@ -59,7 +59,7 @@ function AgentNodeView({ id, data, selected }: NodeProps<VisualNode>) {
   };
   const tools = data.kind === "agent" ? [...new Set((data.config.tools || "").split(",").map(id => id.trim()).filter(Boolean))] : [];
   let knowledgeCount = 0;
-  if (["agent", "llm"].includes(data.kind)) {
+  if (["agent", "llm", "retriever"].includes(data.kind)) {
     try { knowledgeCount = knowledgeBaseIds(data.config).length; } catch { /* Incomplete drafts are validated in the editor. */ }
   }
   return (
@@ -161,7 +161,7 @@ function AgentNodeView({ id, data, selected }: NodeProps<VisualNode>) {
               </button>
             </span>
           )}
-          {(data.kind === "agent" || data.kind === "llm") && (
+          {(data.kind === "agent" || data.kind === "llm" || (data.kind === "retriever" && data.config.analysis === "agentic")) && (
             <span className="af-pill" title={modelProvider(data.config.model)}>
               <Icon name={modelProvider(data.config.model) === "ChatGPT" ? "spark" : "link"} size={13} />
               {modelLabel(data.config.model)}

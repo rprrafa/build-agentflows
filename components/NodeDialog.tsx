@@ -18,12 +18,15 @@ import { modelSettings } from "@/lib/ai-providers";
 import { MemoryFields } from "./MemoryFields";
 import { DecisionFields } from "./DecisionFields";
 import { validateDecisionConfig } from "@/lib/flow-decisions";
+import { RetrieverFields } from "./RetrieverFields";
+import { validateRetrieverConfig } from "@/lib/flow-retriever";
 const fields: Record<Kind, string[]> = {
   start: [],
   llm: ["model", "system", "memoryType", "prompt"],
   agent: ["model", "system", "memoryType", "prompt", "tools"],
   condition: [],
   decision: [],
+  retriever: [],
   state: ["key", "value"],
   http: ["url", "method", "body", "credential"],
   tool: ["tool", "args"],
@@ -166,6 +169,12 @@ export function NodeDialog({
         return false;
       }
     }
+    if (k === "retriever") {
+      try { validateRetrieverConfig(c); } catch (error) {
+        setCloseError((error as Error).message);
+        return false;
+      }
+    }
     if (k === "decision") {
       try { validateDecisionConfig(c); } catch (error) {
         setCloseError((error as Error).message);
@@ -184,7 +193,7 @@ export function NodeDialog({
     }
     onSave({
       ...draft,
-      data: { ...draft.data, label: k === "start" ? "Início" : draft.data.label.trim(), config: { ...c, ...(k === "condition" ? { criteria: JSON.stringify(criteria) } : {}), ...(k === "start" ? { state: JSON.stringify(Object.fromEntries(variables.map((v) => [v.key, v.value]))) } : {}), ...(["agent", "llm"].includes(k) ? { stateUpdates: JSON.stringify(updates) } : {}) } },
+      data: { ...draft.data, label: k === "start" ? "Início" : draft.data.label.trim(), config: { ...c, ...(k === "condition" ? { criteria: JSON.stringify(criteria) } : {}), ...(k === "start" ? { state: JSON.stringify(Object.fromEntries(variables.map((v) => [v.key, v.value]))) } : {}), ...(["agent", "llm", "retriever"].includes(k) ? { stateUpdates: JSON.stringify(updates) } : {}) } },
     });
     onClose();
     return true;
@@ -308,6 +317,9 @@ export function NodeDialog({
         </section>}
 
         {k === "decision" && <DecisionFields config={c} references={references} variables={[...updateKeys]}
+          onChange={(values) => setDraft((d) => ({ ...d, data: { ...d.data, config: { ...d.data.config, ...values } } }))} />}
+
+        {k === "retriever" && <RetrieverFields config={c} references={references} models={models} connected={connected} onConnect={onConnect}
           onChange={(values) => setDraft((d) => ({ ...d, data: { ...d.data, config: { ...d.data.config, ...values } } }))} />}
 
         {fields[k].filter((key) => !media || !["memoryType", "prompt"].includes(key)).map((key) => (
@@ -443,7 +455,7 @@ export function NodeDialog({
             />
           </Modal>
         )}
-        {(k === "agent" || k === "llm") && <section className="node-fields node-completion">
+        {(k === "agent" || k === "llm" || k === "retriever") && <section className="node-fields node-completion">
           <span className="node-completion-title">Ao concluir esta etapa</span>
           {updates.map((u, i) => <div className="node-field node-variable-card" role="group" aria-label={`Atualização de variável ${i + 1}`} key={i}>
             <div className="node-variable-heading"><strong>Variável {i + 1}</strong><IconButton icon="trash" label={`Excluir atualização ${i + 1}`} onClick={() => setUpdates(updates.filter((_, j) => j !== i))} /></div>
@@ -451,7 +463,7 @@ export function NodeDialog({
               <option value="">Escolha uma variável</option>
               {[...updateKeys].map((key) => <option key={key} value={key} disabled={updates.some((update, index) => index !== i && update.key === key)}>{key}</option>)}
             </select></label>
-            <label>Novo valor<ReferenceField showOnFocus multiline rows={2} value={u.value} ariaLabel={`Novo valor ${i + 1}`} onChange={(value) => setUpdates(updates.map((x, j) => j === i ? { ...x, value } : x))} references={[{ value: `{{nodes.${node.id}}}`, label: "Resposta deste agente", alias: nodeAlias(node.id, draft.data.label)?.display }, ...references.filter((r) => r.value !== "{{last}}")]} /></label>
+            <label>Novo valor<ReferenceField showOnFocus multiline rows={2} value={u.value} ariaLabel={`Novo valor ${i + 1}`} onChange={(value) => setUpdates(updates.map((x, j) => j === i ? { ...x, value } : x))} references={[{ value: `{{nodes.${node.id}}}`, label: k === "retriever" ? "Resultado deste bloco" : "Resposta deste agente", alias: nodeAlias(node.id, draft.data.label)?.display }, ...references.filter((r) => r.value !== "{{last}}")]} /></label>
           </div>)}
           <button className="studio-button" disabled={!updateKeys.size || updates.length >= updateKeys.size} onClick={() => setUpdates([...updates, { key: [...updateKeys].find((key) => !updates.some((u) => u.key === key)) || "", value: `{{nodes.${node.id}}}` }])}>Atualizar variável de estado</button>
         </section>}

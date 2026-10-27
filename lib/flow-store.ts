@@ -2,6 +2,7 @@ import { modelSettings } from "./ai-providers";
 import { skillIds } from "./skill-settings";
 import { conditionCriteria, COMPARISONS } from "./flow-conditions";
 import { decisionQuestions, validateDecisionConfig } from "./flow-decisions";
+import { validateRetrieverConfig } from "./flow-retriever";
 import { memorySettings } from "./memory-settings";
 import { validateMediaConfig } from "./media-models";
 import { knowledgeSettings } from "./knowledge-settings";
@@ -62,6 +63,9 @@ export function validateGraph(value: unknown, executable = false): Graph {
     if (n.data.kind === "decision") {
       try { validateDecisionConfig(n.data.config); } catch (error) { throw new FlowError((error as Error).message); }
     }
+    if (n.data.kind === "retriever") {
+      try { validateRetrieverConfig(n.data.config); } catch (error) { throw new FlowError((error as Error).message); }
+    }
     if (n.data.kind === "agent" || n.data.kind === "llm") {
       try { memorySettings(n.data.config); } catch (error) { throw new FlowError((error as Error).message); }
       try { modelSettings(n.data.config); validateMediaConfig(n.data.config); } catch (error) { throw new FlowError((error as Error).message); }
@@ -98,7 +102,7 @@ export function validateGraph(value: unknown, executable = false): Graph {
     for (const n of g.nodes) {
       const out = g.edges.filter((e) => e.source === n.id);
       const k = n.data.kind;
-      const handles = (k === "agent" || k === "llm" || k === "decision") && out.length === 0 ? [] : outputs(k, n.data.config).map((o) => o.id);
+      const handles = (k === "agent" || k === "llm" || k === "decision" || k === "retriever") && out.length === 0 ? [] : outputs(k, n.data.config).map((o) => o.id);
       if (
         out.length !== handles.length ||
         handles.some(
@@ -149,7 +153,10 @@ export function validateGraph(value: unknown, executable = false): Graph {
         throw new FlowError("Escolha a ferramenta a executar.");
       if ((k === "whatsapp" || k === "call") && !c.to?.trim())
         throw new FlowError(`Informe o número em “${n.data.label}”.`);
-      if (k === "agent" || k === "llm") {
+      if (k === "retriever") {
+        try { validateRetrieverConfig(c, true); } catch (error) { throw new FlowError(`${n.data.label}: ${(error as Error).message}`); }
+      }
+      if (k === "agent" || k === "llm" || k === "retriever") {
         try {
           const updates = JSON.parse(c.stateUpdates || "[]");
           const initial = JSON.parse(starts[0].data.config.state || "{}");
@@ -195,14 +202,14 @@ export function validateGraph(value: unknown, executable = false): Graph {
       );
     // Every block must have a route to an end. Repetir ends the flow when its limit is reached.
     const finishing = new Set(
-      g.nodes.filter((n) => ["end", "agent", "llm", "decision", "loop"].includes(n.data.kind) && !g.edges.some((e) => e.source === n.id)).map((n) => n.id),
+      g.nodes.filter((n) => ["end", "agent", "llm", "decision", "retriever", "loop"].includes(n.data.kind) && !g.edges.some((e) => e.source === n.id)).map((n) => n.id),
     );
     for (let i = 0; i < g.nodes.length; i++)
       g.edges.forEach((e) => {
         if (finishing.has(e.target)) finishing.add(e.source);
       });
     if (finishing.size !== g.nodes.length)
-      throw new FlowError("Todo caminho precisa poder terminar em Agente, LLM, Decisão, Resposta ou Repetir.");
+      throw new FlowError("Todo caminho precisa poder terminar em Agente, LLM, Decisão, Base de conhecimento, Resposta ou Repetir.");
   }
   const result = structuredClone(g);
   for (const n of result.nodes) if (n.data.kind === "start") n.data.label = "Início";

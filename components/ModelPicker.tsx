@@ -63,9 +63,11 @@ export function ModelPicker({ value, kind, chatModels, connected, config, onConf
   const selected = models.find(m => m.id === value);
   const selectedCredential = matching.find(c => c.id === credentialId);
   const builtins = (config.builtinTools || "").split(",").map(id => id.trim());
-  const offered = builtinToolsFor(value);
+  // The knowledge block analyses text chunks only: no native tools, attached images or media models.
+  const textOnly = kind === "retriever";
+  const offered = textOnly ? [] : builtinToolsFor(value);
   // Agents call tools in a text loop; Replicate generation models belong to the LLM block. Saved agents keep their choice.
-  const catalog = [{ id: "chatgpt", name: "ChatGPT · assinatura" }, ...AI_PROVIDERS.filter(p => (kind !== "agent" || p.id !== "replicate" || provider === "replicate")).map(p => ({ id: `credential:ai_${p.id}`, name: p.name }))];
+  const catalog = [{ id: "chatgpt", name: "ChatGPT · assinatura" }, ...AI_PROVIDERS.filter(p => ((kind !== "agent" && !textOnly) || p.id !== "replicate" || provider === "replicate")).map(p => ({ id: `credential:ai_${p.id}`, name: p.name }))];
   function saved(c: SavedToolCredential) {
     setCredentials(items => [...items.filter(i => i.id !== c.id), c]); setEditor(null);
     onConfigChange({ modelCredentialId: c.id }); setRetry(n => n + 1);
@@ -97,7 +99,7 @@ export function ModelPicker({ value, kind, chatModels, connected, config, onConf
             {chatModels.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
             {value && !chatModels.some(m => m.id === value) && <option value={value}>{value} · modelo salvo</option>}
           </select></label>
-          {(chatModels.find(m => m.id === value)?.inputModalities || ["image"]).includes("image") && imageField(true)}
+          {!textOnly && (chatModels.find(m => m.id === value)?.inputModalities || ["image"]).includes("image") && imageField(true)}
         </> : <>
           <label>Credencial<div className="provider-credential-row">
             {/* The last option is an action: it opens the dialog and the controlled value stays unchanged. */}
@@ -131,7 +133,7 @@ export function ModelPicker({ value, kind, chatModels, connected, config, onConf
             </label>)}
             <small>Executadas pelo próprio fornecedor e cobradas na sua chave. {provider === "openai" ? "Imagens geradas aparecem abaixo da resposta. " : geminiImageModel(value) ? "" : "Gráficos do código aparecem abaixo da resposta. "}Nem todo modelo aceita todas; o fornecedor informa quando recusa.</small>
           </fieldset>}
-          {selected?.inputModalities.includes("image") && provider !== "anthropic" && !isMediaModel(value) && imageField(false)}
+          {!textOnly && selected?.inputModalities.includes("image") && provider !== "anthropic" && !isMediaModel(value) && imageField(false)}
           {selected?.parameters.includes("max_tokens") && <label>Máximo de tokens de saída<input aria-label="Máximo de tokens de saída" type="number" min="1" max={selected.maxOutputTokens || 1000000} step="1" placeholder="4000" value={config.modelMaxTokens || ""} onChange={e => onConfigChange({ modelMaxTokens: e.target.value })} /></label>}
           {geminiImageModel(value) && <small>Responde com texto e imagens, que aparecem abaixo da resposta. Cada imagem é cobrada na sua chave do Google.</small>}
           {isMediaModel(value) && provider !== "replicate" && <small>Gera imagens com o saldo do fornecedor. {mediaModel(value)?.inputModalities.includes("image") ? "Aceita até 5 referências e 6 MB no total." : "Recebe descrições em texto."}</small>}
