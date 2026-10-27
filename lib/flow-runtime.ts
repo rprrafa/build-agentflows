@@ -583,6 +583,7 @@ export async function buildRun(
   embed?: { sessionId: string; maxActiveMs: number },
   runId?: unknown,
   session?: string,
+  scheduleId?: string,
 ) {
   if (typeof input !== "string" || !input.trim() || input.length > 20000)
     throw new FlowError(
@@ -631,6 +632,7 @@ export async function buildRun(
     ...(attachments.length ? { attachments } : {}),
     ...(conversation.length ? { conversation } : {}),
     ...(session ? { session } : {}),
+    ...(scheduleId ? { scheduleId } : {}),
     output: "",
     next: graph.nodes.find((n) => n.data.kind === "start")!.id,
     state: {},

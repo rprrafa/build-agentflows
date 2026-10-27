@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## 0.55.0 — 27/10/2026
+
+- **Prompts agendados no Início**: o diálogo do bloco mostra os próximos agendamentos do fluxo e o botão "Gerenciar agendamentos" abre um modal próprio, com os agendamentos agrupados em Ativos, Pausados e Encerrados e as ações Executar agora, Editar, Pausar/Retomar e Excluir. Cada fluxo aceita até 10 agendamentos.
+- Cada agendamento tem prompt, data e horário de início (Brasília), frequência (não repetir, dias da semana escolhidos ou mensal no mesmo dia, com o último dia em meses curtos) e data final opcional, com a frase de resumo ("Repete de segunda a sexta às 08:00 até 11/11/2026").
+- Cada ocorrência vira uma execução comum do último fluxo salvo, como conversa nova, pela mesma fila e contando no limite mensal. O resultado e o motivo de uma falha aparecem no agendamento. Ocorrência perdida por mais de 1 hora com o serviço parado não é executada fora de hora.
+- Os agendamentos ficam fora do grafo: salvar, exportar, duplicar e executar o fluxo pelo endereço publicado, MCP, chat incorporado ou canais continuam iguais.
+
 ## 0.54.0 — 27/10/2026
 
 - Habilidades (skills) no Agente: "Adicionar" recebe um SKILL.md ou um .zip com a pasta da habilidade (pasta com o mesmo nome do `name` do SKILL.md), no formato aberto Agent Skills. O cabeçalho YAML precisa de `name` (até 64 caracteres, minúsculas, números e hífens) e `description` (até 1024). As habilidades ficam na conta, podem ser reutilizadas em outros agentes, e enviar de novo o mesmo `name` atualiza a habilidade.

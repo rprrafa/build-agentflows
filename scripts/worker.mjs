@@ -10,6 +10,7 @@ import { nextJobNotification, waitJobNotification, closeQueue } from "../lib/saa
 import { deliverAuthMail, senderStatus } from "../lib/saas-mail.ts";
 import { cleanupAuth } from "../lib/saas-auth.ts";
 import { runBudgetMs } from "../lib/run-limits.ts";
+import { dispatchDueSchedules } from "../lib/tenant-schedules.ts";
 
 // A deploy stops claiming new jobs but lets active runs finish (LIMITE_EXECUCAO_SEGUNDOS, 180 s by default);
 // only after DRAIN_MS are they aborted. Keep stop_grace_period above DRAIN_MS + EXIT_MARGIN_MS.
@@ -18,7 +19,7 @@ const DRAIN_MS = runBudgetMs() + 5000, EXIT_MARGIN_MS = 10000;
 const log = (evento, extra) => console.log(JSON.stringify({ evento, ...extra, em: new Date().toISOString() }));
 const db = saasDatabase(), id = randomUUID(), stop = new AbortController(), drain = new AbortController();
 const active = new Set();
-let mail = Promise.resolve(), sendingMail = false, lastMaintenance = 0, hint;
+let mail = Promise.resolve(), sendingMail = false, lastMaintenance = 0, lastSchedules = 0, hint;
 for (const signal of ["SIGTERM", "SIGINT"]) process.once(signal, () => {
   stop.abort();
   setTimeout(() => drain.abort(), DRAIN_MS).unref();
@@ -37,6 +38,12 @@ try {
         lastMaintenance = Date.now(); await cleanupAuth(db);
         await db.query("DELETE FROM worker_heartbeats WHERE updated_at<now()-interval '1 day'");
         await db.query("DELETE FROM jobs WHERE finished_at<now()-interval '7 days' AND status NOT IN ('queued','running')");
+      }
+      // Prompts agendados do Início viram jobs comuns; vários workers dividem os vencidos por SKIP LOCKED.
+      if (Date.now() - lastSchedules > 15000) {
+        lastSchedules = Date.now();
+        const agendados = await dispatchDueSchedules(db);
+        if (agendados) log("agendamentos_disparados", { quantidade: agendados });
       }
       if (!sendingMail && process.env.RESEND_API_KEY && process.env.RESEND_FROM) {
         sendingMail = true;

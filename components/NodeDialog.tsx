@@ -17,6 +17,7 @@ import { isMediaModel, MEDIA_PROMPT, validateMediaConfig } from "@/lib/media-mod
 import { modelSettings } from "@/lib/ai-providers";
 import { MemoryFields } from "./MemoryFields";
 import { DecisionFields } from "./DecisionFields";
+import { ScheduleSummary } from "./FlowSchedules";
 import { validateDecisionConfig } from "@/lib/flow-decisions";
 import { RetrieverFields } from "./RetrieverFields";
 import { validateRetrieverConfig } from "@/lib/flow-retriever";
@@ -91,6 +92,7 @@ export function NodeDialog({
   onRename,
   connected,
   onConnect,
+  flowId,
 }: {
   node: Block;
   nodes: Block[];
@@ -100,6 +102,8 @@ export function NodeDialog({
   onRename: (label: string) => void;
   connected: boolean;
   onConnect: () => void;
+  /** Fluxo já salvo; ausente num fluxo novo, que ainda não aceita agendamentos. */
+  flowId?: string;
 }) {
   const [draft, setDraft] = useState(() => structuredClone(node)),
     [groups, setGroups] = useState<ToolGroup[] | null>(null),
@@ -300,6 +304,7 @@ export function NodeDialog({
           <button className="studio-button" disabled={variables.length >= 50} onClick={() => setVariables([...variables, { key: "", value: "" }])}>Adicionar variável</button>
           {invalidVariables && <small role="alert">Use nomes únicos, começando com uma letra, sem espaços ou acentos.</small>}
         </section>}
+        {k === "start" && <ScheduleSummary flowId={flowId} />}
 
         {k === "condition" && <section className="condition-criteria">
           <p>O primeiro critério atendido define o caminho. Quando nenhum é atendido, o fluxo segue pela última saída.</p>

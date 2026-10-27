@@ -4288,3 +4288,55 @@ button.skill-card-main:hover { background: var(--studio-bg); }
 .trace-skills li { display: grid; gap: 2px; }
 .trace-skills small { color: var(--studio-muted); }
 @media (max-width: 600px) { .skill-dialog-info { grid-template-columns: 1fr; } .skill-card-main { padding: 12px 8px 12px 12px; gap: 10px; } }
+/* Prompts agendados do Início: resumo no diálogo do bloco e modal de gestão (FlowSchedules). */
+.schedule-summary { gap: 10px; min-width: 0; }
+.schedule-summary > * { min-width: 0; }
+.schedule-summary > .studio-button { justify-self: start; }
+.schedule-summary-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; list-style: none; margin: 0; padding: 0; }
+.schedule-summary-list li { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--studio-line); border-radius: 10px; background: var(--studio-bg); color: var(--studio-primary); }
+.schedule-summary-list li.paused, .schedule-summary-list li.ended { color: var(--studio-muted); }
+.schedule-summary-list li > div { min-width: 0; flex: 1; }
+.schedule-summary-list li span { display: block; overflow: hidden; color: var(--studio-ink); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.schedule-summary-list li small { margin-top: 2px; }
+.schedule-summary-list li.more { padding: 0 2px; border: 0; background: none; }
+.schedule-modal-title { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; }
+.schedule-modal-title h2 { flex: 1; }
+.schedule-modal-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: var(--studio-ink); color: var(--studio-panel); }
+.schedule-manager { display: grid; gap: 18px; }
+.schedule-manager .studio-error, .schedule-notice { margin: 0; }
+.schedule-notice { padding: 10px 14px; border-radius: 8px; background: var(--studio-primary-soft); color: var(--studio-ink) !important; }
+.schedule-notice a, .schedule-row-text a { color: var(--studio-primary); text-decoration: underline; }
+.schedule-group h3 { margin-bottom: 8px; font-size: 14px; font-weight: 700; }
+.schedule-group ul { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--studio-line); }
+.schedule-row { position: relative; display: flex; align-items: center; gap: 14px; padding: 12px 8px 12px 14px; border-bottom: 1px solid var(--studio-line); }
+.schedule-row:hover { background: var(--studio-bg); }
+.schedule-row-text { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.schedule-row-text strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.schedule-row-text small { color: var(--studio-muted); font-size: 11px; line-height: 1.5; }
+.schedule-row-text .schedule-row-error { color: var(--studio-reference-missing); }
+.schedule-status { display: inline-flex; align-items: center; gap: 6px; color: var(--studio-muted); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.schedule-status.active { color: var(--studio-primary); }
+.schedule-menu { position: relative; top: auto; right: auto; }
+.schedule-menu > div { width: 200px; }
+.schedule-menu button:disabled { opacity: 0.5; cursor: default; }
+.schedule-menu button.danger { color: #b63f4c; }
+.schedule-confirm { display: flex; align-items: center; gap: 10px; flex: 1; flex-wrap: wrap; }
+.schedule-confirm span { flex: 1; min-width: 200px; font-size: 12px; }
+.schedule-footnote { margin: 0; font-size: 11px !important; }
+.schedule-form { display: grid; gap: 20px; }
+.schedule-form .modal-actions { margin-top: 0; }
+.schedule-form .studio-error { margin: 0; }
+.schedule-form label.schedule-prompt { display: grid; gap: 8px; font-size: 12px; font-weight: 700; }
+.schedule-form textarea, .schedule-form input, .schedule-form select { display: block; width: auto; margin: 0; padding: 9px 12px; border: 1px solid var(--studio-line); border-radius: 8px; background: var(--studio-bg); color: var(--studio-ink); font-size: 12px; font-weight: 400; color-scheme: light; }
+:root[data-studio-theme="dark"] .schedule-form :is(input, select) { color-scheme: dark; }
+.schedule-form textarea { width: 100%; resize: vertical; line-height: 1.7; }
+.schedule-form :is(textarea, input, select):focus { border-color: var(--studio-primary); box-shadow: 0 0 0 2px var(--studio-primary-soft); outline: none; }
+.schedule-when { display: grid; gap: 14px; margin: 0; padding: 0; border: 0; }
+.schedule-when legend { margin-bottom: 4px; padding: 0; font-size: 12px; font-weight: 700; }
+.schedule-description { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--studio-ink) !important; font-size: 13px !important; }
+.schedule-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.schedule-line > span:first-child { width: 48px; font-size: 12px; }
+.schedule-line small, .schedule-when > small { color: var(--studio-muted); font-size: 11px; }
+.schedule-weekdays { display: flex; gap: 6px; flex-wrap: wrap; }
+.schedule-weekdays button { width: 32px; height: 32px; border: 1px solid var(--studio-line); border-radius: 50%; background: var(--studio-surface); color: var(--studio-muted); font-size: 12px; font-weight: 700; }
+.schedule-weekdays button.on { border-color: var(--studio-ink); background: var(--studio-ink); color: var(--studio-panel); }
