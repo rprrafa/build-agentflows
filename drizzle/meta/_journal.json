@@ -50,6 +50,13 @@
       "when": 1793128575381,
       "tag": "0006_agent-skills",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793130816672,
+      "tag": "0007_flow-schedules",
+      "breakpoints": true
     }
   ]
 }

@@ -74,6 +74,14 @@ export const runs = pgTable("runs", {
   check("runs_body", sql`${t.body}->>'id'=${t.id} AND ${t.body}->>'flowId'=${t.flow_id} AND ${t.body}->>'status'=${t.status}`),
   uniqueIndex("runs_parent").on(t.user_id, t.id, t.flow_id),
   index("runs_list").on(t.user_id, t.sequence.desc()), index("runs_flow").on(t.user_id, t.flow_id, t.status, t.sequence.desc())]);
+// Prompts agendados do bloco Início. Ficam fora do grafo: salvar, exportar ou chamar o fluxo pela API não os altera.
+// active=false é pausado; next_run_at nulo com active=true é encerrado.
+export const flowSchedules = pgTable("flow_schedules", {
+  user_id: uuid("user_id").notNull(), id: text("id").notNull(), flow_id: text("flow_id").notNull(), body: jsonb("body").notNull(),
+  active: boolean("active").notNull().default(true), next_run_at: time("next_run_at"), created_at: time("created_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.user_id, t.id] }), foreignKey({ columns: [t.user_id, t.flow_id], foreignColumns: [flows.user_id, flows.id] }).onDelete("cascade"),
+  check("flow_schedules_body", sql`${t.body}->>'id'=${t.id} AND ${t.body}->>'flowId'=${t.flow_id}`),
+  index("flow_schedules_flow").on(t.user_id, t.flow_id, t.created_at), index("flow_schedules_due").on(t.next_run_at).where(sql`${t.active}`)]);
 export const knowledgeBases = pgTable("knowledge_bases", {
   user_id: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }), id: text("id").notNull(),
   body: jsonb("body").$type<KnowledgeBase>().notNull(), revision: bigint("revision", { mode: "number" }).notNull().default(1),

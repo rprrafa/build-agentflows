@@ -42,6 +42,8 @@ export type IconName =
   | "chat"
   | "code"
   | "more"
+  | "clock"
+  | "pause"
   | "close"
   | "copy"
   | "trash"
@@ -153,6 +155,13 @@ const paths: Record<string, ReactNode> = {
   paperclip: <path d="m8 12 6-6a3 3 0 0 1 4 4l-8 8a5 5 0 0 1-7-7l9-9m-6 11 8-8" />,
   send: <path d="M12 20V4m-7 7 7-7 7 7" />,
   play: <path d="m8 4 13 8-13 8z" />,
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </>
+  ),
+  pause: <path d="M12 3v8M6.3 6.3a8 8 0 1 0 11.4 0" />,
   stop: <rect x="5" y="5" width="14" height="14" rx="2" />,
   spark: <path d="m12 3 2.8 6.2L21 12l-6.2 2.8L12 21l-2.8-6.2L3 12l6.2-2.8z" />,
   check: <path d="m5 12 4 4L19 6" />,

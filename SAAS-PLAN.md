@@ -4,7 +4,7 @@ A aplicação é exclusivamente SaaS. Cada usuário autenticado é um tenant pes
 O proprietário vem da sessão, do job ou de um token público validado, nunca de
 um `user_id` arbitrário enviado pelo navegador.
 
-PostgreSQL é obrigatório. Drizzle define as 31 tabelas em `lib/db/schema.ts`,
+PostgreSQL é obrigatório. Drizzle define as 34 tabelas em `lib/db/schema.ts`,
 as relações e as migrações em `drizzle/`. As tabelas não têm prefixo `saas_`.
 SQL parametrizado é usado nas transações, travas, consultas JSONB e operações
 atômicas da fila. Não existe modo local, bypass de autenticação ou importador SQLite.
@@ -91,6 +91,13 @@ aprovação/job é atômico. Cancelar revoga a execução imediatamente, mas man
 vaga até confirmação do worker ou expiração da autorização. Recuperação marca
 a tarefa como interrompida e não repete efeitos externos incertos. Um token antigo
 não pode gravar progresso, liberar a vaga ou sobrescrever uma operação substituta.
+
+Prompts agendados do Início ficam em `flow_schedules` (fora do corpo do fluxo, com
+cascata na exclusão). A cada 15 segundos o worker reivindica os vencidos com
+`FOR UPDATE SKIP LOCKED`, avança `next_run_at` na mesma transação e só então
+enfileira a execução no contexto do dono (`enqueueRun`, mesmo plano e fila). Uma
+queda entre os dois passos perde a ocorrência em vez de repeti-la; ocorrências com
+mais de 1 hora de atraso são registradas como perdidas.
 
 O Compose Coolify inclui web, worker, PostgreSQL e Redis, com rede privada,
 volumes, healthchecks, shutdown e limites de recursos. Migrações usam trava de

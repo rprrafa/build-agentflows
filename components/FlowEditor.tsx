@@ -1107,6 +1107,7 @@ export function FlowEditor({ id }: { id: string }) {
           models={connection?.models || []}
           connected={!!connection?.account}
           onConnect={() => setConnect(true)}
+          flowId={flow.id === "new" ? undefined : flow.id}
           onRename={(label) => renameBlock(node.id, label)}
           onClose={() => setEditing(null)}
           onSave={(n) => {
