@@ -1,5 +1,9 @@
 # Histórico de versões
 
+## 0.54.1 — 27/10/2026
+
+- Segurança: a imagem Docker (web e worker) passa a usar `node:24.22.1-alpine`, fixada, em vez da tag móvel `node:24-alpine`. A 24.22.1 corrige a CVE-2026-111497 (Node2Shell), uma escrita fora dos limites no decodificador Brotli do Node. O `fetch` descomprime `Content-Encoding: br` automaticamente, e o app busca URLs escolhidas pelas contas (fontes das bases, mídia, ferramentas OpenAPI e internas, servidores MCP), então um servidor malicioso podia derrubar ou comprometer o processo. `package.json` declara `engines` (>=24.22.1) e `.nvmrc` fixa a versão local. Reconstruir a imagem sem cache e reimplantar web e worker.
+
 ## 0.54.0 — 27/10/2026
 
 - Habilidades (skills) no Agente: "Adicionar" recebe um SKILL.md ou um .zip com a pasta da habilidade (pasta com o mesmo nome do `name` do SKILL.md), no formato aberto Agent Skills. O cabeçalho YAML precisa de `name` (até 64 caracteres, minúsculas, números e hífens) e `description` (até 1024). As habilidades ficam na conta, podem ser reutilizadas em outros agentes, e enviar de novo o mesmo `name` atualiza a habilidade.
