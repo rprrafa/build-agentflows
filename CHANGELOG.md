@@ -1,5 +1,10 @@
 # Histórico de versões
 
+## 0.55.1 — 27/10/2026
+
+- Segurança: a imagem Docker (web e worker) passa a usar `node:24.22.1-alpine`, fixada, em vez da tag móvel `node:24-alpine`. A 24.22.1 corrige a CVE-2026-111497 (Node2Shell), uma escrita fora dos limites no decodificador Brotli do Node. O `fetch` descomprime `Content-Encoding: br` automaticamente, e o app busca URLs escolhidas pelas contas (fontes das bases, mídia, ferramentas OpenAPI e internas, servidores MCP), então um servidor malicioso podia derrubar ou comprometer o processo. `package.json` declara `engines` (>=24.22.1) e `.nvmrc` fixa a versão local.
+- O npm 11.19 que acompanha a 24.22.1 bloqueia scripts de instalação não aprovados: `allowScripts` no `package.json` libera faiss-node, esbuild, unrs-resolver e fsevents (por versão) e nega o tesseract.js (só opencollective). Reconstruir a imagem sem cache e reimplantar web e worker.
+
 ## 0.55.0 — 27/10/2026
 
 - **Prompts agendados no Início**: o diálogo do bloco mostra os próximos agendamentos do fluxo e o botão "Gerenciar agendamentos" abre um modal próprio, com os agendamentos agrupados em Ativos, Pausados e Encerrados e as ações Executar agora, Editar, Pausar/Retomar e Excluir. Cada fluxo aceita até 10 agendamentos.

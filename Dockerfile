@@ -1,10 +1,10 @@
 # Web e worker usam a mesma imagem e a mesma versão do runtime.
-FROM node:24-alpine AS deps
+FROM node:24.22.1-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
 RUN apk add --no-cache --virtual .native-build-deps build-base cmake git python3 openblas-dev lapack-dev && npm ci && apk del .native-build-deps
 
-FROM node:24-alpine AS build
+FROM node:24.22.1-alpine AS build
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
@@ -18,7 +18,7 @@ RUN npm run build && rm -rf .next/standalone/node_modules
 FROM deps AS production-deps
 RUN npm prune --omit=dev
 
-FROM node:24-alpine AS runner
+FROM node:24.22.1-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=10000 HOSTNAME=0.0.0.0 \
     DATA_DIR=/app/data NODE_OPTIONS=--disable-warning=ExperimentalWarning
