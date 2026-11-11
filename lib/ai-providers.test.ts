@@ -84,6 +84,10 @@ test("OpenAI, Google e Groq enviam chave selecionada e parâmetros, e executam f
     }
     assert.throws(() => modelSettings({ modelTemperature: "NaN" }));
     assert.throws(() => modelSettings({ modelMaxTokens: "2.5" }));
+    assert.deepEqual(modelSettings({ model: "openrouter:@preset/suporte-n1" }).builtins, []);
+    assert.throws(() => modelSettings({ model: "openrouter:@preset/" }), /nome do preset/);
+    assert.throws(() => modelSettings({ model: "openrouter:@preset/Com Espaço" }), /nome do preset/);
+    assert.throws(() => modelSettings({ model: "openrouter:@preset/suporte-n1", modelTemperature: "0.5" }), /definidos no próprio preset/);
   });
 });
 

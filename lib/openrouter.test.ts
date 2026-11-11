@@ -137,3 +137,15 @@ test("catálogo informa modalidades e envia imagens no conteúdo nativo do model
     assert.equal(calls.length, 1);
   } finally { globalThis.fetch = fetch0; }
 });
+test("preset do OpenRouter vai como @preset/<nome> sem parâmetros padrão e recusa imagens", async () => {
+  setConfig("OPENROUTER_API_KEY", "sk-or-teste");
+  const { fetcher, calls } = fakeFetch([{ choices: [{ finish_reason: "stop", message: { content: "Feito" } }] }]);
+  const result = await runOpenRouter({ system: "Instruções", prompt: "oi", model: "openrouter:@preset/suporte-n1", fetcher });
+  assert.equal(result, "Feito");
+  assert.equal(calls[0].body.model, "@preset/suporte-n1");
+  assert.equal("max_tokens" in calls[0].body, false);
+  await assert.rejects(
+    () => runOpenRouter({ system: "", prompt: "oi", model: "openrouter:@preset/suporte-n1", fetcher, images: ["data:image/png;base64,AA=="] }),
+    /Presets do OpenRouter não informam/,
+  );
+});

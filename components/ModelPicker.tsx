@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
 import { request, Icon, IconButton } from "./StudioUI";
-import { AI_PROVIDERS, REASONING_EFFORTS, builtinToolsFor, geminiImageModel, aiProvider, modelProviderId, aiCredentialProvider, type AiModel } from "@/lib/ai-providers";
+import { AI_PROVIDERS, REASONING_EFFORTS, OPENROUTER_PRESET, openRouterPreset, builtinToolsFor, geminiImageModel, aiProvider, modelProviderId, aiCredentialProvider, type AiModel } from "@/lib/ai-providers";
 import type { SavedToolCredential } from "@/lib/tool-credential-store";
 import { formatCredentialExpiry } from "@/lib/credential-expiry";
 import { ToolSelect } from "./ToolSelect";
@@ -17,6 +17,7 @@ export function modelLabel(model?: string) {
   if (!model) return "ChatGPT";
   if (mediaModel(model)) return mediaModel(model)!.name;
   if (model === OPENROUTER_AUTO) return "OpenRouter automático";
+  if (openRouterPreset(model) !== undefined) return `Preset ${openRouterPreset(model) || "personalizado"}`;
   if (model.startsWith(PREFIX)) {
     const id = model.slice(PREFIX.length);
     return id.includes("/") ? id.split("/").slice(1).join("/") : id;
@@ -62,6 +63,9 @@ export function ModelPicker({ value, kind, chatModels, connected, config, onConf
   }, [provider, credentialId, retry]);
   const selected = models.find(m => m.id === value);
   const selectedCredential = matching.find(c => c.id === credentialId);
+  const preset = openRouterPreset(value);
+  // OpenRouter presets live in the account (openrouter.ai/settings/presets), so the "custom" entry opens a name field.
+  const modelCatalog = provider === "openrouter" ? [{ id: OPENROUTER_PRESET, name: "Personalizado · preset do OpenRouter" }, ...models] : models;
   const builtins = (config.builtinTools || "").split(",").map(id => id.trim());
   // The knowledge block analyses text chunks only: no native tools, attached images or media models.
   const textOnly = kind === "retriever";
@@ -115,9 +119,13 @@ export function ModelPicker({ value, kind, chatModels, connected, config, onConf
               onChange={e => onConfigChange({ model: REPLICATE_PREFIX + e.target.value.trim().toLowerCase(), modelTemperature: "", modelMaxTokens: "", modelReasoningEffort: "" })} />
             <small>Use o nome exibido na Replicate, como google/nano-banana. O resultado pode ser texto, imagens ou um vídeo, conforme o modelo. <a href="https://replicate.com/explore" target="_blank" rel="noreferrer">Explorar modelos</a></small>
           </label> : loading ? <small role="status">Carregando modelos…</small> : <>
-            <ToolSelect label="Modelo de IA" listLabel="Modelos de IA" value={value} catalog={models} icon={<Icon name="spark" size={18} />} emptyMessage="Nenhum modelo disponível. Conecte uma credencial e tente novamente." missingLabel={modelLabel(value)}
+            <ToolSelect label="Modelo de IA" listLabel="Modelos de IA" value={preset !== undefined ? OPENROUTER_PRESET : value} catalog={modelCatalog} icon={<Icon name="spark" size={18} />} emptyMessage="Nenhum modelo disponível. Conecte uma credencial e tente novamente." missingLabel={modelLabel(value)}
               onChange={model => onConfigChange({ model, modelTemperature: "", modelMaxTokens: "", modelReasoningEffort: "", ...(geminiImageModel(model) !== geminiImageModel(value) ? { builtinTools: "" } : {}) })} />
-            {!!models.length && <small>{models.length} modelos disponíveis{selected?.contextLength ? ` · contexto de ${selected.contextLength.toLocaleString("pt-BR")} tokens` : ""}{selected?.inputModalities.includes("image") ? " · aceita imagens" : ""}{selected?.outputModalities?.includes("image") ? " · gera imagens" : ""}</small>}
+            {preset !== undefined && <label>Preset do OpenRouter<input aria-label="Preset do OpenRouter" placeholder="nome-do-preset" spellCheck={false} autoCapitalize="none" value={preset}
+                onChange={e => onConfigChange({ model: OPENROUTER_PRESET + e.target.value.trim().toLowerCase().replace(/^@?preset\//, "") })} />
+              <small>Use o nome do endereço do preset (@preset/nome). Modelo, instruções do preset e parâmetros vêm do OpenRouter; as instruções do bloco também são enviadas. <a href="https://openrouter.ai/settings/presets" target="_blank" rel="noreferrer">Ver presets</a></small>
+            </label>}
+            {preset === undefined && !!models.length && <small>{models.length} modelos disponíveis{selected?.contextLength ? ` · contexto de ${selected.contextLength.toLocaleString("pt-BR")} tokens` : ""}{selected?.inputModalities.includes("image") ? " · aceita imagens" : ""}{selected?.outputModalities?.includes("image") ? " · gera imagens" : ""}</small>}
           </>}
           {error && <div role="alert"><p className="studio-error">{error}</p><button type="button" className="tool-text-button" onClick={() => setRetry(n => n + 1)}>Tentar novamente</button></div>}
           {selected?.parameters.includes("temperature") && <label>Temperatura<input aria-label="Temperatura" type="number" min="0" max={provider === "anthropic" ? "1" : "2"} step="0.1" placeholder="Padrão do modelo" value={config.modelTemperature || ""} onChange={e => onConfigChange({ modelTemperature: e.target.value })} /></label>}

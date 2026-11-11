@@ -16,6 +16,10 @@ export const modelProviderId = (model = ""): AiProvider | "chatgpt" => aiProvide
 export const aiCredentialProvider = (id: string) => `ai_${id}`;
 export const AI_CREDENTIAL_CATALOG = AI_PROVIDERS.map(p => ({ id: `credential:ai_${p.id}`, provider: aiCredentialProvider(p.id), name: `${p.name} · Modelos`, icon: p.icon }));
 export type AiModel = { id: string; name: string; inputModalities: string[]; outputModalities?: string[]; parameters: string[]; contextLength?: number; maxOutputTokens?: number };
+/** Preset do OpenRouter (openrouter.ai/settings/presets): o bloco guarda "openrouter:@preset/<slug>" e o preset define modelo, instruções e parâmetros. */
+export const OPENROUTER_PRESET = "openrouter:@preset/";
+export const openRouterPreset = (model = "") => model.startsWith(OPENROUTER_PRESET) ? model.slice(OPENROUTER_PRESET.length) : undefined;
+export const OPENROUTER_PRESET_SLUG = /^[a-z0-9][a-z0-9_-]{0,99}$/;
 /** Gemini models that answer with images (gemini-*-image*, "Nano Banana"): only the native generateContent API returns them. */
 export const geminiImageModel = (model = "") => /^google:gemini-[\w.-]*image/.test(model);
 /** Native tools accepted by the Gemini image models (Google documents only search grounding for them). */
@@ -71,6 +75,12 @@ export function builtinTools(config: Record<string, string>): BuiltinTool[] {
 }
 export function modelSettings(config: Record<string, string>) {
   imageDetail(config);
+  const preset = openRouterPreset(config.model);
+  if (preset !== undefined) {
+    if (!OPENROUTER_PRESET_SLUG.test(preset)) throw new Error("Informe o nome do preset do OpenRouter como aparece no endereço (letras minúsculas, números, - ou _).");
+    // The preset owns the model parameters; a value here would silently override it.
+    if (config.modelTemperature?.trim() || config.modelMaxTokens?.trim() || config.modelReasoningEffort?.trim()) throw new Error("Com um preset do OpenRouter, temperatura, tokens e raciocínio são definidos no próprio preset.");
+  }
   const result: { temperature?: number; maxTokens?: number; reasoningEffort?: ReasoningEffort; builtins: BuiltinTool[] } = { builtins: builtinTools(config) };
   if (config.modelReasoningEffort?.trim()) {
     const effort = config.modelReasoningEffort.trim() as ReasoningEffort;
