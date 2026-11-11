@@ -4,6 +4,7 @@
 import { runChatCompletion } from "./chat-completion";
 import { toolConfig } from "./tool-config-context";
 import { publicModelCache } from "./public-model-cache";
+import { openRouterPreset } from "./ai-providers";
 export const PREFIX = "openrouter:";
 export const GENERATOR_MODEL = "openai/gpt-4.1-mini";
 export function openRouterKey() {
@@ -33,6 +34,12 @@ export async function runOpenRouter(options: Omit<Parameters<typeof runChatCompl
   if (!key) throw new Error("Conecte o OpenRouter em Credenciais para usar este modelo.");
   const id = options.model?.startsWith(PREFIX) ? options.model.slice(PREFIX.length) : options.model || GENERATOR_MODEL;
   const settings = options.settings || {};
+  // Preset: OpenRouter resolves "@preset/<slug>" with the model, instructions and parameters saved there,
+  // so no default max_tokens is sent (request parameters would override the preset).
+  if (openRouterPreset(options.model) !== undefined) {
+    if (options.images?.length) throw new Error("Presets do OpenRouter não informam se aceitam imagens: escolha um modelo específico no bloco para enviar imagens.");
+    return runChatCompletion({ ...options, key, model: id, url: "https://openrouter.ai/api/v1/chat/completions", parameters: {} });
+  }
   const selected = options.images?.length || settings.temperature !== undefined || settings.maxTokens !== undefined
     ? (await listModels()).find(m => m.id === id) : undefined;
   if (options.images?.length && (id === "openrouter/auto" || !selected?.inputModalities.includes("image"))) throw new Error("Escolha um modelo OpenRouter com suporte a imagens no bloco.");

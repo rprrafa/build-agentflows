@@ -1,5 +1,9 @@
 # Histórico de versões
 
+## 0.58.0 — 11/11/2026
+
+- OpenRouter: a lista de modelos do LLM, do Agente e do bloco Base de conhecimento ganha a opção "Personalizado · preset do OpenRouter". Basta informar o nome do preset (como em `@preset/nome`); o bloco guarda `openrouter:@preset/<nome>` e o OpenRouter aplica o modelo, as instruções e os parâmetros salvos no preset. As instruções do bloco continuam sendo enviadas. Temperatura, tokens e raciocínio ficam no preset (o app não envia o limite padrão de tokens). Presets não informam se aceitam imagens, então o envio de imagens pede um modelo específico, como no OpenRouter automático.
+
 ## 0.57.0 — 06/11/2026
 
 - **Biblioteca de modelos.** "Comece com um modelo" deixa de ser uma grade de três cartões e vira uma biblioteca: áreas na coluna lateral (com a contagem de cada uma), busca por tarefa que ignora acento e maiúsculas ("reuniao" acha "reunião") e "Sugeridos para começar" no topo. Sem resultado, a tela oferece limpar a busca ou começar do zero.

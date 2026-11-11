@@ -17,7 +17,7 @@ export function imageIssues(graph: Graph, models: ModelCapability[]): ImageIssue
   return nodes.flatMap((n) => {
     const id = n.data.config.model;
     const model = id ? models.find((m) => m.id === id) : models.find((m) => m.isDefault && !m.id.startsWith("openrouter:"));
-    const reason = id === "openrouter:openrouter/auto" ? "Escolha um modelo específico que aceite imagens."
+    const reason = id === "openrouter:openrouter/auto" || id?.startsWith("openrouter:@preset/") ? "Escolha um modelo específico que aceite imagens."
       : !model ? "Não foi possível confirmar o suporte a imagens deste modelo."
       : !model.inputModalities.includes("image") ? `${model.name} não aceita imagens.` : "";
     return reason ? [{ nodeId: n.id, label: n.data.label, reason }] : [];
